@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env python3
+#!/usr/bin/env python3
 """junior_mark common initialization module.
 
 Add to the top of each script:
@@ -77,6 +77,13 @@ except Exception as _paths_err:
         "cwd_restore":       d / "cwd_restore.flag",
         "cwd_restored":      d / "cwd_restored.flag",
     }
+
+# ── ensure required base directories exist ───────────────────────
+try:
+    (JM_BASE / 'debug').mkdir(parents=True, exist_ok=True)
+    (JM_BASE / 'data').mkdir(parents=True, exist_ok=True)
+except Exception:
+    pass
 
 # ── stream setup ─────────────────────────────────────────────────
 sys.stdin  = io.TextIOWrapper(sys.stdin.buffer,  encoding="utf-8")
