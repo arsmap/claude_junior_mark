@@ -69,7 +69,7 @@ If the path does not exist, treat as an error (no fallback).
 `💾 farewell detected` in system-reminder → present choices via **AskUserQuestion**
 Exception: if `Session already ended` or `already ended` appears, skip and respond naturally.
 
-**Choices:** move~ / end~ / /compact
+**Choices:** move~ / end~
 
 **move~** (typed directly or selected):
 1. Confirm DATA_DIR (Rule 1-1)
@@ -80,8 +80,6 @@ Exception: if `Session already ended` or `already ended` appears, skip and respo
 **end~:**
 1. Confirm DATA_DIR (Rule 1-1)
 2. Run `python ~/.claude/plugins/junior_mark/scripts/foreman_off.py "{DATA_DIR}"` + report completion
-
-**/compact:** Guide the user to type "/compact" only. Do not run any script.
 
 **Context judgement:**
 - "move~" / "opening a new session" → move
