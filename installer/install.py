@@ -80,12 +80,25 @@ def install():
     if claude_md.exists():
         shutil.copy2(claude_md, str(claude_md) + '.bak')
     content = claude_md.read_text(encoding='utf-8-sig') if claude_md.exists() else ''
-    existing = {l.strip() for l in content.splitlines()}
-    missing = [l for l in CLAUDE_MD_LINES if l.strip() not in existing]
+    jm_set = {l.strip() for l in CLAUDE_MD_LINES}
+    seen_jm = set()
+    deduped = []
+    for line in content.splitlines():
+        if line.strip() in jm_set:
+            if line.strip() not in seen_jm:
+                deduped.append(line)
+                seen_jm.add(line.strip())
+        else:
+            deduped.append(line)
+    missing = [l for l in CLAUDE_MD_LINES if l.strip() not in seen_jm]
+    new_content = '\n'.join(deduped)
     if missing:
-        with claude_md.open('a', encoding='utf-8') as f:
-            f.write('\n' + '\n'.join(missing) + '\n')
+        new_content += '\n' + '\n'.join(missing) + '\n'
+    claude_md.write_text(new_content, encoding='utf-8')
+    if missing:
         ok("CLAUDE.md @include added")
+    elif len(deduped) < len(content.splitlines()):
+        ok("CLAUDE.md duplicate @include removed")
     else:
         info("CLAUDE.md @include already present (skipped)")
 
