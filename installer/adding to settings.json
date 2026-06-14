@@ -1,0 +1,48 @@
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python -u ~/.claude/plugins/junior_mark/scripts/session_start.py",
+            "timeout": 30,
+            "shell": "bash",
+            "statusMessage": "foreman on-air..."
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python ~/.claude/plugins/junior_mark/scripts/signal_checker.py 2>>\"$HOME/.claude/plugins/junior_mark/debug/hook_stderr.txt\" || true",
+            "shell": "bash"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python -u ~/.claude/plugins/junior_mark/scripts/relay_writer.py 2>>\"$HOME/.claude/plugins/junior_mark/debug/hook_stderr.txt\" || true",
+            "shell": "bash"
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python ~/.claude/plugins/junior_mark/scripts/precompact.py",
+            "shell": "bash"
+          }
+        ]
+      }
+    ]
+  }
