@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env python3
+#!/usr/bin/env python3
 """Junior Mark installer"""
 import json
 import shutil
@@ -66,7 +66,10 @@ def install():
 
     if 'hooks' not in settings:
         settings['hooks'] = {}
-    settings['hooks'].update(new_hooks)
+    for event, new_entries in new_hooks.items():
+        existing = settings['hooks'].get(event, [])
+        kept = [e for e in existing if not any('junior_mark' in h.get('command', '') for h in e.get('hooks', []))]
+        settings['hooks'][event] = kept + new_entries
     settings_path.write_text(
         json.dumps(settings, ensure_ascii=False, indent=2), encoding='utf-8'
     )
@@ -74,8 +77,11 @@ def install():
 
     # 6. add @include lines to CLAUDE.md (idempotent)
     claude_md = CLAUDE_DIR / 'CLAUDE.md'
-    content = claude_md.read_text(encoding='utf-8') if claude_md.exists() else ''
-    missing = [l for l in CLAUDE_MD_LINES if l not in content]
+    if claude_md.exists():
+        shutil.copy2(claude_md, str(claude_md) + '.bak')
+    content = claude_md.read_text(encoding='utf-8-sig') if claude_md.exists() else ''
+    existing = {l.strip() for l in content.splitlines()}
+    missing = [l for l in CLAUDE_MD_LINES if l.strip() not in existing]
     if missing:
         with claude_md.open('a', encoding='utf-8') as f:
             f.write('\n' + '\n'.join(missing) + '\n')
