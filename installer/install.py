@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Junior Mark installer"""
 import json
+import re
 import shutil
 from pathlib import Path
 
@@ -80,17 +81,19 @@ def install():
     if claude_md.exists():
         shutil.copy2(claude_md, str(claude_md) + '.bak')
     content = claude_md.read_text(encoding='utf-8-sig') if claude_md.exists() else ''
-    jm_set = {l.strip() for l in CLAUDE_MD_LINES}
+    def _norm(s):
+        return re.sub(r'\\(.)', r'\1', s.strip())
+    jm_norm = {_norm(l) for l in CLAUDE_MD_LINES}
     seen_jm = set()
     deduped = []
     for line in content.splitlines():
-        if line.strip() in jm_set:
-            if line.strip() not in seen_jm:
+        if _norm(line) in jm_norm:
+            if _norm(line) not in seen_jm:
                 deduped.append(line)
-                seen_jm.add(line.strip())
+                seen_jm.add(_norm(line))
         else:
             deduped.append(line)
-    missing = [l for l in CLAUDE_MD_LINES if l.strip() not in seen_jm]
+    missing = [l for l in CLAUDE_MD_LINES if _norm(l) not in seen_jm]
     new_content = '\n'.join(deduped)
     if missing:
         new_content += '\n' + '\n'.join(missing) + '\n'
