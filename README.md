@@ -30,7 +30,7 @@ Claude Junior Mark (jm) solves this with three things:
 |--------|---------|
 | `foreman ▶` | Foreman started fresh this session |
 | `foreman ✓` | Foreman carried over from previous session |
-| `foreman ✗` | Foreman failed to start — try `/foreman restart` |
+| `foreman ✗` | Foreman failed to start — open a new session |
 | `turns(X%) token(X%)` | Token usage this session. Move session at 72%+ |
 
 ---
@@ -38,10 +38,10 @@ Claude Junior Mark (jm) solves this with three things:
 ## Features
 
 - Real-time token/turn monitoring via background daemon
+- Status bar on every turn: token%, turn count, foreman PID and alive state
 - Context threshold alerts (warn at 72%, urgent at 81%)
 - Automatic handoff — next session picks up where you left off
 - Turn counter reset on `/compact`
-- `/foreman` slash command for status and control
 
 > **Recommended:** Disable Claude Code's built-in auto-compaction for best results.
 > JM manages session transitions manually, and auto-compact can interfere with handoff timing.
@@ -68,36 +68,21 @@ Type these in any message to trigger session management:
 
 ---
 
-## /foreman command
+## Status bar
+
+Shown automatically on every turn (`⎿ UserPromptSubmit says:`):
 
 ```
-/foreman              Show status
-/foreman restart      Restart foreman (clears relay log)
-/foreman retire       Save snapshot and retire session (foreman stays running)
-/foreman on           Claim session lock + start foreman
-/foreman off          Stop foreman + create reset flag for next session
-/foreman log          Show recent log output
-```
-
-### Status output
-
-```
-    - foreman    : alive
-    - PID        : 12345 ✓
-    - turns      : 5 / 30 (17%)
-    - transcript : 8,241 / 50,000 byte
-    - token      : 70,112 (42%)
-    - signal     : none
+🟢 [████████░░░░░░░░░░░░] 40.1% | 80K/200K T:26/30 [JM PID: 3624]
 ```
 
 | Field | Description |
 |-------|-------------|
-| `foreman` | alive / dead |
-| `PID` | Foreman process ID |
-| `turns` | Turn count this session / 30 (%) |
-| `transcript` | relay.jsonl size / 50,000 byte |
-| `token` | Cumulative token count (%) |
-| `signal` | none / warn / trsd |
+| 🟢 / 🟡 / 🔴 | Foreman alive + context level (normal / warn / threshold) |
+| ⚫ | Foreman dead — open a new session or type `start~` |
+| `[JM PID: N]` | Foreman process ID (`----` if dead) |
+| `X% \| XK/200K` | Token usage |
+| `T:N/30` | Turn count this session |
 
 ---
 
@@ -115,9 +100,9 @@ Type these in any message to trigger session management:
 |---------|----------|
 | ⚠ Context N% reached | Type `move~` |
 | ⚠ Context N% exceeded — urgent | Type `move~` immediately |
-| ⚠ foreman dead detected | `/foreman restart` |
-| ⚠ Session interrupted by terminal close | Open a new CC window or `/foreman restart` |
-| ⚠ Session already ended | Open a new CC window or `/foreman on` |
+| ⚠ foreman dead detected | Open a new session |
+| ⚠ Session interrupted by terminal close | Open a new CC window or type `start~` |
+| ⚠ Session already ended | Open a new CC window or type `start~` |
 | ℹ Foreman stopped in previous session | Auto-restarted — ignore |
 | ℹ Session move requested in previous session | Context is ready — start working |
 
@@ -179,7 +164,6 @@ Restart Claude Code after installation. The system activates automatically.
 | Installed to | Contents |
 |-------------|---------|
 | `~/.claude/plugins/junior_mark/scripts/` | Hook scripts |
-| `~/.claude/commands/foreman.md` | `/foreman` command |
 | `~/.claude/settings.json` | Hook registrations |
 
 ---

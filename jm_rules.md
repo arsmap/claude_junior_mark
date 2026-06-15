@@ -19,8 +19,8 @@ Do not invoke any skill, command, or tool. Immediately output only the following
 - status : ⚠️ stale session — this session's foreman has been replaced. Please open a new session.
 ```
 
-## 1. Foreman Skill Usage Rule
-- To check or control foreman status: always use the `/foreman` skill. Do not manually assemble `foreman.pid` paths.
+## 1. Foreman Status Rule
+- Foreman status is shown automatically in the status bar each turn (`⎿ UserPromptSubmit says:`). It displays PID, token%, and turn count. Do not manually assemble `foreman.pid` paths.
 - To check turn count: confirm DATA_DIR via Rule 1-1, then analyze relay.jsonl. Do not browse files.
 
 ## 1-1. DATA_DIR Resolution Rule
@@ -33,14 +33,13 @@ DATA_DIR = `~/.claude/plugins/junior_mark/data/{slug}`
 
 If the path does not exist, treat as an error (no fallback).
 
-## 2. /foreman Command Execution Rules
-`restart` and `off` are destructive — confirmation required before running.
+## 2. Foreman Control Keywords
 
-| Command | Why dangerous | Handling |
-|---------|---------------|----------|
-| `restart` | Deletes relay.jsonl → resets conversation log | Confirm first |
-| `off` | Creates reset flag for next session | Confirm first |
-| `on` / `status` / `snapshot` / `retire` / `log` | Safe | Run immediately |
+| Keyword | Action |
+|---------|--------|
+| `start~` | Claim session lock + start foreman (reactivate after end~) |
+| `move~` | Retire session — save snapshot + pass context to next session |
+| `end~` | Stop foreman + create reset flag for next session |
 
 ## 3. Session Start Context Rules
 
@@ -48,7 +47,7 @@ If the path does not exist, treat as an error (no fallback).
 - `IS_GUEST=true` or `IS_NEW_SESSION=true` → respond immediately (skip handoff. Rule 5 `💾 farewell detected` signal still applies with highest priority)
 - `Session already ended` → output the following and stop:
   ```
-  Session has ended. Type start~ or /foreman restart to begin a new session.
+  Session has ended. Type start~ to begin a new session.
   ```
 - Otherwise → proceed to read handoff (output only "Reading handoff." — do not expose path or details)
 

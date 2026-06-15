@@ -25,7 +25,6 @@ def install():
     # 1. create directories
     (TARGET_DIR / 'scripts').mkdir(parents=True, exist_ok=True)
     (TARGET_DIR / 'debug').mkdir(parents=True, exist_ok=True)
-    (CLAUDE_DIR / 'commands').mkdir(parents=True, exist_ok=True)
     ok("directories created")
 
     # 2. copy scripts
@@ -44,15 +43,7 @@ def install():
             shutil.copy2(src_file, TARGET_DIR / fname)
     ok("jm_rules.md, README.md, LICENSE copied")
 
-    # 4. copy commands/
-    src_cmds = INSTALLER_DIR / 'commands'
-    count = 0
-    for f in src_cmds.glob('*.md'):
-        shutil.copy2(f, CLAUDE_DIR / 'commands' / f.name)
-        count += 1
-    ok(f"commands/ copied ({count} files)")
-
-    # 5. merge hooks into settings.json
+    # 4. merge hooks into settings.json
     settings_path = CLAUDE_DIR / 'settings.json'
     if settings_path.exists():
         shutil.copy2(settings_path, str(settings_path) + '.bak')
@@ -76,7 +67,7 @@ def install():
     )
     ok("settings.json hooks merged")
 
-    # 6. add @include lines to CLAUDE.md (idempotent)
+    # 5. add @include lines to CLAUDE.md (idempotent)
     claude_md = CLAUDE_DIR / 'CLAUDE.md'
     if claude_md.exists():
         shutil.copy2(claude_md, str(claude_md) + '.bak')

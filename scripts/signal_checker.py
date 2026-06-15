@@ -504,13 +504,63 @@ def main():
             Path(foreman_exit).unlink(missing_ok=True)
         except: pass
 
-    # single output (join multiple warnings with newlines)
-    # short single-line (💾 farewell, ✅ start success) shown inline on first line
-    # others (warnings only) start with blank line so message appears on next line
-    if warnings:
-        first = warnings[0]
-        is_short_first = "💾" in first
-        message = "\n".join(warnings) if is_short_first else "\n" + "\n".join(warnings)
+    # build status bar (always shown)
+    status_line = None
+    if not is_guest:
+        try:
+            tokens = 0
+            token_file = P.get("token_usage", DATA_DIR / "token_usage.txt")
+            if Path(token_file).exists():
+                tokens = int(Path(token_file).read_text(encoding='utf-8').strip() or 0)
+            ctx_window = CONTEXT_TOKENS_FALLBACK
+            try:
+                cj_path = Path.home() / '.claude.json'
+                if cj_path.exists():
+                    tw = json.loads(cj_path.read_text(encoding='utf-8')).get(
+                        'cachedGrowthBookFeatures', {}).get('tengu_hawthorn_window')
+                    if tw:
+                        ctx_window = int(tw)
+            except Exception:
+                pass
+            turns = 0
+            if relay_file.exists():
+                with open(relay_file, encoding='utf-8') as _f:
+                    for _line in _f:
+                        if '"role": "assistant"' in _line or '"role":"assistant"' in _line:
+                            turns += 1
+            pct = round(tokens / ctx_window * 100, 1) if ctx_window else 0.0
+            foreman_alive = False
+            foreman_pid_str = "----"
+            if P["pid"].exists():
+                try:
+                    _pid = P["pid"].read_text(encoding='utf-8').strip()
+                    if _pid:
+                        _r = subprocess.run(
+                            ["tasklist", "/FI", f"PID eq {_pid}", "/NH", "/FO", "CSV"],
+                            capture_output=True, check=False)
+                        _out = _r.stdout.decode(errors='replace')
+                        foreman_alive = _pid in _out and "python" in _out.lower()
+                        if foreman_alive:
+                            foreman_pid_str = _pid
+                except Exception:
+                    pass
+            if not foreman_alive:
+                dot = "⚫"
+            else:
+                dot = "🔴" if pct >= THRESHOLD else ("🟡" if pct >= WARN else "🟢")
+            filled = max(0, min(20, round(pct / 100 * 20)))
+            bar = "█" * filled + "░" * (20 - filled)
+            k_tok = f"{tokens // 1000}K" if tokens >= 1000 else str(tokens)
+            k_win = f"{ctx_window // 1000}K"
+            status_line = f"{dot} [{bar}] {pct}% | {k_tok}/{k_win} T:{turns}/30 | PID: {foreman_pid_str}"
+            dbg(f"status_bar: {status_line}")
+        except Exception as e:
+            dbg(f"status_bar error: {e}")
+
+    # single output: status bar always inline, all warnings always on next line
+    if warnings or status_line:
+        parts = ([status_line] if status_line else []) + warnings
+        message = "\n".join(parts) if status_line else "\n" + "\n".join(warnings)
         dbg(f"systemMessage output: {message!r}")
         out: dict[str, object] = {"systemMessage": message}
         additional_contexts = []
