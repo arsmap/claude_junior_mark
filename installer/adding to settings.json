@@ -1,3 +1,8 @@
+  "statusLine": {
+    "type": "command",
+    "command": "python ~/.claude/plugins/junior_mark/scripts/statusline.py",
+    "shell": "bash"
+  },
   "hooks": {
     "SessionStart": [
       {

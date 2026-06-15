@@ -60,8 +60,11 @@ Type these in any message to trigger session management:
 | Keyword | Action | Next session |
 |---------|--------|--------------|
 | `move~` | Save context and move to a new session | Picks up previous context |
-| `end~` | Full stop — shuts down foreman | Starts fresh |
+| `end~` | Full stop — shuts down foreman + ends session | Starts fresh |
 | `start~` | Re-activate after `end~` in the same window | — |
+| `on~` | Start foreman only (no session state change) | — |
+| `off~` | Stop foreman only (no session state change) | — |
+| `restart~` | Kill and restart foreman | — |
 | `guest-end~` | End a guest session | — |
 
 > The `~` suffix is required. Mentioning the word alone in conversation does nothing.
@@ -70,19 +73,19 @@ Type these in any message to trigger session management:
 
 ## Status bar
 
-Shown automatically on every turn (`⎿ UserPromptSubmit says:`):
+Shown automatically on every turn :
 
 ```
-🟢 [████████░░░░░░░░░░░░] 40.1% | 80K/200K T:26/30 [JM PID: 3624]
+🟢 [████████░░░░░░░░░░░░] 40.1% | 80K/200K T:26/30 | PID: 3624
 ```
 
 | Field | Description |
 |-------|-------------|
 | 🟢 / 🟡 / 🔴 | Foreman alive + context level (normal / warn / threshold) |
-| ⚫ | Foreman dead — open a new session or type `start~` |
-| `[JM PID: N]` | Foreman process ID (`----` if dead) |
+| ⚫ | Foreman dead — type `restart~` to restart, or open a new session |
 | `X% \| XK/200K` | Token usage |
 | `T:N/30` | Turn count this session |
+| `PID: N` | Foreman process ID (`----` if dead) |
 
 ---
 
@@ -100,7 +103,7 @@ Shown automatically on every turn (`⎿ UserPromptSubmit says:`):
 |---------|----------|
 | ⚠ Context N% reached | Type `move~` |
 | ⚠ Context N% exceeded — urgent | Type `move~` immediately |
-| ⚠ foreman dead detected | Open a new session |
+| ⚠ foreman dead detected | Type `restart~` to restart, or open a new session |
 | ⚠ Session interrupted by terminal close | Open a new CC window or type `start~` |
 | ⚠ Session already ended | Open a new CC window or type `start~` |
 | ℹ Foreman stopped in previous session | Auto-restarted — ignore |
@@ -165,9 +168,17 @@ Restart Claude Code after installation. The system activates automatically.
 |-------------|---------|
 | `~/.claude/plugins/junior_mark/scripts/` | Hook scripts |
 | `~/.claude/settings.json` | Hook registrations |
+| `~/.claude/CLAUDE.md` | jm_rules.md registrations |
 
 ---
 
 ## About the name
 
 Claude Junior Mark / Junior Mark / jm / foreman — all refer to the same system.
+
+---
+
+## Acknowledgements
+
+The idea that Claude Code passes live `context_window` data (token count, window size, usage %) via stdin to a `statusLine` hook was discovered from [claude-context-monitor](https://github.com/fomyio/claude-context-monitor) by fomyio.
+The status bar layout, session management, foreman daemon, and handoff system are independently developed.

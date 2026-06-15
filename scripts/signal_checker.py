@@ -15,7 +15,7 @@ from pathlib import Path
 # [1] load bootstrap (paths / constants / stream init)
 sys.path.insert(0, str(Path(__file__).parent))
 try:
-    from bootstrap import get_data_dir, get_jm_paths, JM_BASE, CONTEXT_TOKENS_FALLBACK, CONTEXT_WINDOW_OVERHEAD, WARN, THRESHOLD
+    from bootstrap import get_data_dir, get_jm_paths, JM_BASE
 except Exception:
     try:
         from pathlib import Path as _P; from datetime import datetime as _dt; import traceback as _tb
@@ -120,6 +120,9 @@ def find_cc_pid():
 
 RETIRE_KEYWORDS   = ["move~"]
 START_KEYWORDS    = ["start~"]
+ON_KEYWORDS       = ["on~"]
+OFF_KEYWORDS      = ["off~"]
+RESTART_KEYWORDS  = ["restart~"]
 FAREWELL_KEYWORDS = ['goodbye', 'goodnight', 'seeyou', 'seeyalater', 'gottago',
                      'wrappingup', 'callingitaday', 'thatsitfortoday', 'alldone',
                      'donefortoday', 'signingoff', 'imout', 'talklaterdone', 'byebye']
@@ -138,6 +141,41 @@ def dbg(msg):
             f.write(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}\n")
     except Exception:
         pass
+
+
+def foreman_start(DATA_DIR):
+    """Start foreman.py as background process (CREATE_NO_WINDOW). Returns status string."""
+    foreman_py = Path(__file__).parent / 'foreman.py'
+    try:
+        env = os.environ.copy()
+        env['JM_DATA_DIR'] = str(DATA_DIR)
+        proc = subprocess.Popen(
+            [sys.executable, str(foreman_py)],
+            env=env,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            creationflags=0x08000000
+        )
+        dbg(f"foreman_start: pid={proc.pid}")
+        return f"✅ foreman started (PID={proc.pid})"
+    except Exception as e:
+        return f"❌ foreman start failed: {e}"
+
+
+def foreman_stop(DATA_DIR, P):
+    """Kill foreman process only (no reset flag). Returns status string."""
+    try:
+        pid_file = P.get('pid', DATA_DIR / 'foreman.pid')
+        if Path(pid_file).exists():
+            fPid = Path(pid_file).read_text(encoding='utf-8').strip()
+            if fPid:
+                r = subprocess.run(["taskkill", "/F", "/PID", fPid], capture_output=True)
+                if r.returncode == 0:
+                    return f"✅ foreman PID {fPid} killed"
+                return f"⚠️ foreman PID {fPid} kill failed"
+        return "⚠️ no foreman.pid found"
+    except Exception as e:
+        return f"❌ error: {e}"
 
 
 def farewell_matches(prompt):
@@ -305,6 +343,39 @@ def main():
         sys.stdout.flush()
         return
 
+    # on~ / off~ / restart~ — pure foreman control (no session state change)
+    if prompt and not is_guest:
+        _ps = prompt.strip()
+        _ctrl_msg = None
+        if _ps in ON_KEYWORDS:
+            already = False
+            if P["pid"].exists():
+                try:
+                    fPid = P["pid"].read_text(encoding='utf-8').strip()
+                    r = subprocess.run(["tasklist", "/FI", f"PID eq {fPid}", "/NH", "/FO", "CSV"], capture_output=True, check=False)
+                    already = fPid in r.stdout.decode(errors='replace') and "python" in r.stdout.decode(errors='replace').lower()
+                except Exception:
+                    pass
+            msg = "⚠️ foreman already running — use restart~ to restart" if already else foreman_start(DATA_DIR)
+            dbg(f"on~ → {msg}")
+            _ctrl_msg = f"on~ — {msg}"
+        elif _ps in OFF_KEYWORDS:
+            msg = foreman_stop(DATA_DIR, P)
+            dbg(f"off~ → {msg}")
+            _ctrl_msg = f"off~ — {msg}"
+        elif _ps in RESTART_KEYWORDS:
+            stop_msg = foreman_stop(DATA_DIR, P)
+            start_msg = foreman_start(DATA_DIR)
+            dbg(f"restart~ → {stop_msg} / {start_msg}")
+            _ctrl_msg = f"restart~ — {stop_msg} → {start_msg}"
+        if _ctrl_msg:
+            print(json.dumps({
+                "systemMessage": f"\n[Junior Mark] {_ctrl_msg}",
+                "hookSpecificOutput": {"hookEventName": "UserPromptSubmit", "additionalContext": "HOOK_FOREMAN_ON_DONE"}
+            }, ensure_ascii=False))
+            sys.stdout.flush()
+            return
+
     skip_session_warn = False
     start_message = None
 
@@ -414,7 +485,7 @@ def main():
                 output = r.stdout.decode(errors='replace')
                 is_alive = str(pid) in output and "python" in output.lower()
                 if not is_alive and not P["context_warn"].exists():
-                    warnings.append("[Junior Mark] ⚠️ foreman dead detected — open a new session or run /foreman restart.")
+                    warnings.append("[Junior Mark] ⚠️ foreman dead detected — type restart~ to restart, or open a new session.")
                     dbg("foreman dead detected")
         except Exception as e:
             dbg(f"foreman check error: {e}")
@@ -482,7 +553,8 @@ def main():
     if Path(ctx_threshold).exists():
         try:
             msg = Path(ctx_threshold).read_text(encoding='utf-8').strip()
-            warnings.append(f"[Junior Mark] 🚨 {msg}")
+            if msg:
+                warnings.append(f"[Junior Mark] 🚨 {msg}")
             Path(ctx_threshold).unlink(missing_ok=True)
         except: pass
 
@@ -491,7 +563,8 @@ def main():
     if Path(ctx_warn).exists():
         try:
             msg = Path(ctx_warn).read_text(encoding='utf-8').strip()
-            warnings.append(f"[Junior Mark] ⚠️ {msg}")
+            if msg:
+                warnings.append(f"[Junior Mark] ⚠️ {msg}")
             Path(ctx_warn).unlink(missing_ok=True)
         except: pass
 
@@ -504,64 +577,9 @@ def main():
             Path(foreman_exit).unlink(missing_ok=True)
         except: pass
 
-    # build status bar (always shown)
-    status_line = None
-    if not is_guest:
-        try:
-            tokens = 0
-            token_file = P.get("token_usage", DATA_DIR / "token_usage.txt")
-            if Path(token_file).exists():
-                tokens = int(Path(token_file).read_text(encoding='utf-8').strip() or 0)
-            ctx_window = CONTEXT_TOKENS_FALLBACK
-            try:
-                cj_path = Path.home() / '.claude.json'
-                if cj_path.exists():
-                    tw = json.loads(cj_path.read_text(encoding='utf-8')).get(
-                        'cachedGrowthBookFeatures', {}).get('tengu_hawthorn_window')
-                    if tw:
-                        ctx_window = int(tw)
-            except Exception:
-                pass
-            ctx_window = max(ctx_window - CONTEXT_WINDOW_OVERHEAD, 1)
-            turns = 0
-            if relay_file.exists():
-                with open(relay_file, encoding='utf-8') as _f:
-                    for _line in _f:
-                        if '"role": "assistant"' in _line or '"role":"assistant"' in _line:
-                            turns += 1
-            pct = round(tokens / ctx_window * 100, 1) if ctx_window else 0.0
-            foreman_alive = False
-            foreman_pid_str = "----"
-            if P["pid"].exists():
-                try:
-                    _pid = P["pid"].read_text(encoding='utf-8').strip()
-                    if _pid:
-                        _r = subprocess.run(
-                            ["tasklist", "/FI", f"PID eq {_pid}", "/NH", "/FO", "CSV"],
-                            capture_output=True, check=False)
-                        _out = _r.stdout.decode(errors='replace')
-                        foreman_alive = _pid in _out and "python" in _out.lower()
-                        if foreman_alive:
-                            foreman_pid_str = _pid
-                except Exception:
-                    pass
-            if not foreman_alive:
-                dot = "⚫"
-            else:
-                dot = "🔴" if pct >= THRESHOLD else ("🟡" if pct >= WARN else "🟢")
-            filled = max(0, min(20, round(pct / 100 * 20)))
-            bar = "█" * filled + "░" * (20 - filled)
-            k_tok = f"{tokens // 1000}K" if tokens >= 1000 else str(tokens)
-            k_win = f"{ctx_window // 1000}K"
-            status_line = f"{dot} [{bar}] {pct}% | {k_tok}/{k_win} T:{turns}/30 | PID: {foreman_pid_str}"
-            dbg(f"status_bar: {status_line}")
-        except Exception as e:
-            dbg(f"status_bar error: {e}")
-
-    # single output: status bar always inline, all warnings always on next line
-    if warnings or status_line:
-        parts = ([status_line] if status_line else []) + warnings
-        message = "\n".join(parts) if status_line else "\n" + "\n".join(warnings)
+    # single output: warnings only (status bar moved to statusLine footer)
+    if warnings:
+        message = "\n" + "\n".join(warnings)
         dbg(f"systemMessage output: {message!r}")
         out: dict[str, object] = {"systemMessage": message}
         additional_contexts = []

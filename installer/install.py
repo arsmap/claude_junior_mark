@@ -36,12 +36,12 @@ def install():
         count += 1
     ok(f"scripts/ copied ({count} files)")
 
-    # 3. copy root files (jm_rules.md, README.md, LICENSE)
-    for fname in ('jm_rules.md', 'README.md', 'LICENSE'):
+    # 3. copy root files (jm_rules.md, README.md, README_KO.md,LICENSE)
+    for fname in ('jm_rules.md', 'README.md', 'README_KO.md', 'LICENSE'):
         src_file = BASE_DIR / fname
         if src_file.exists():
             shutil.copy2(src_file, TARGET_DIR / fname)
-    ok("jm_rules.md, README.md, LICENSE copied")
+    ok("jm_rules.md, README.md, README_KO.md, LICENSE copied")
 
     # 4. merge hooks into settings.json
     settings_path = CLAUDE_DIR / 'settings.json'
