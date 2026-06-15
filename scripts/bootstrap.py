@@ -17,7 +17,7 @@ from pathlib import Path
 # prior bug (167K fallback) reproduced: WARN=87%×167K≈145K, THRESHOLD=97%×167K≈162K
 # → converted to 200K basis: 145K/200K=72%, 162K/200K=81%
 CONTEXT_TOKENS_FALLBACK = 200_000
-CONTEXT_WINDOW_OVERHEAD = 0       # denominator = CC's context_window_size (no adjustment needed)
+CONTEXT_WINDOW_OVERHEAD = 20_000  # CC compact triggers at ~180K effective window (measured: 177K/200K=88.5% at compact)
 TURN_THRESHOLD = 30
 CHAR_THRESHOLD = 50_000
 WARN      = 72   # 144K tokens → CC ~19% remaining
