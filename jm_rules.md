@@ -74,18 +74,18 @@ Exception: if `Session already ended` or `already ended` appears, skip and respo
 1. Confirm DATA_DIR (Rule 1-1)
 2. Write `{DATA_DIR}/pre_retire_summary.json` — current session work in 5 lines or fewer:
    `{"decided": ["summary1", "summary2", ...]}`
-3. Run `python ~/.claude/plugins/junior_mark/scripts/foreman_retire.py "{DATA_DIR}"` + report completion
+3. Run `python ~/.claude/plugins/junior_mark/scripts/foreman_retire.py "{DATA_DIR}"` + output exactly: `retire complete.`
 
 **end~:**
 1. Confirm DATA_DIR (Rule 1-1)
-2. Run `python ~/.claude/plugins/junior_mark/scripts/foreman_off.py "{DATA_DIR}"` + report completion
+2. Run `python ~/.claude/plugins/junior_mark/scripts/foreman_off.py "{DATA_DIR}"` + output exactly: `end complete.`
 
 **Context judgement:**
 - "move~" / "opening a new session" → move
 - "end~" → end
 - farewell / wrap-up / session move notice → ambiguous → present choices
 
-**start~:** If `HOOK_FOREMAN_ON_DONE` is in system-reminder, do not run Claude further. Acknowledge only.
+**start~:** If `HOOK_FOREMAN_ON_DONE` is in system-reminder, do not run Claude further. Output exactly: `start complete.`
 
 **`~` suffix rule:** Do not trigger on mention in normal conversation. Only recognize as a command when `~` is appended.
 

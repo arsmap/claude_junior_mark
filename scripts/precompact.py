@@ -52,12 +52,6 @@ def main():
     except Exception:
         pass
 
-    # single JSON output — multiple outputs cause TUI display issues (same rule as signal_checker)
-    try:
-        msg = "🔄 Compact — context and turn counter will reset."
-        print(json.dumps({"systemMessage": msg}, ensure_ascii=False))
-    except Exception:
-        pass
             
 
 if __name__ == "__main__":
