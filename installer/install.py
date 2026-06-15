@@ -49,7 +49,11 @@ def install():
         shutil.copy2(settings_path, str(settings_path) + '.bak')
         text = settings_path.read_text(encoding='utf-8')
         text = re.sub(r',\s*([}\]])', r'\1', text)  # strip trailing commas
-        settings = json.loads(text)
+        try:
+            settings = json.loads(text)
+        except json.JSONDecodeError as e:
+            info(f"settings.json parse failed ({e}) — starting fresh (backup saved)")
+            settings = {}
     else:
         settings = {}
 
