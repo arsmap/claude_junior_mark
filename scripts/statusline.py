@@ -109,7 +109,7 @@ def main():
     k_tok = f"{tokens // 1000}K" if tokens >= 1000 else str(tokens)
     k_win = f"{ctx_window // 1000}K"
 
-    print(f"{dot} [{bar}] {pct}% | {k_tok}/{k_win} | {turns}T/30T | PID:{foreman_pid_str}")
+    print(f"{dot} [{bar}] {pct}% | {k_tok.rstrip('K')}/{k_win} | {turns}/30T | PID:{foreman_pid_str}")
     sys.stdout.flush()
 
 
