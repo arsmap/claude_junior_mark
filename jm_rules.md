@@ -87,6 +87,8 @@ Exception: if `Session already ended` or `already ended` appears, skip and respo
 
 **start~:** If `HOOK_FOREMAN_ON_DONE` is in system-reminder, do not run Claude further. Output exactly: `start complete.`
 
+**on~/off~/restart~:** These are handled entirely by the hook (signal_checker.py). If `HOOK_FOREMAN_ON_DONE` is in system-reminder, do NOT run any scripts. Output exactly: `ctrl complete.`
+
 **`~` suffix rule:** Do not trigger on mention in normal conversation. Only recognize as a command when `~` is appended.
 
 ## 6. Snapshot Rules
