@@ -151,8 +151,9 @@ def write_handoff(entries, metrics):
 
 
 def write_context_warn(metrics):
-    token_pct = metrics.get("token_pct", 0)
-    msg = f"Context {token_pct}% reached ({metrics.get('context_tokens', 0):,} tokens) — consider starting a new session."
+    pct = metrics.get("token_pct", 0)
+    tokens = metrics.get("context_tokens", 0)
+    msg = f"Context {pct}% reached ({tokens:,} tokens) — consider starting a new session."
     try:
         P["context_warn"].write_text(msg, encoding="utf-8")
     except Exception as e:
@@ -160,8 +161,9 @@ def write_context_warn(metrics):
 
 
 def write_context_threshold(metrics):
-    token_pct = metrics.get("token_pct", 0)
-    msg = f"Context {token_pct}% exceeded ({metrics.get('context_tokens', 0):,} tokens) — run move~ or /foreman retire now."
+    pct = metrics.get("token_pct", 0)
+    tokens = metrics.get("context_tokens", 0)
+    msg = f"Context {pct}% exceeded ({tokens:,} tokens) — run move~ or /foreman retire now."
     try:
         P["context_threshold"].write_text(msg, encoding="utf-8")
     except Exception as e:
