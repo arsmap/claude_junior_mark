@@ -12,7 +12,7 @@ from pathlib import Path
 # [1] load bootstrap (paths / constants / stream init)
 sys.path.insert(0, str(Path(__file__).parent))
 try:
-    from bootstrap import get_data_dir, get_jm_paths, JM_BASE, CONTEXT_TOKENS_FALLBACK, WARN, THRESHOLD, TURN_THRESHOLD, CHAR_THRESHOLD
+    from bootstrap import get_data_dir, get_jm_paths, JM_BASE, CONTEXT_TOKENS_FALLBACK, CONTEXT_WINDOW_OVERHEAD, WARN, THRESHOLD, TURN_THRESHOLD, CHAR_THRESHOLD
 except Exception:
     try:
         from pathlib import Path as _P; from datetime import datetime as _dt; import traceback as _tb
@@ -105,6 +105,7 @@ def update_handoff(DATA_DIR, P, last_prompt_file):
         context_window = int(claude_json.get('cachedGrowthBookFeatures', {}).get('tengu_hawthorn_window', CONTEXT_TOKENS_FALLBACK))
     except Exception:
         pass
+    context_window = max(context_window - CONTEXT_WINDOW_OVERHEAD, 1)
     token_pct = min(round(context_tokens / context_window * 100), 999) if context_tokens > 0 else 0
 
     pct = token_pct

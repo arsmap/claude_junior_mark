@@ -13,7 +13,7 @@ from pathlib import Path
 # [1] load bootstrap (paths / constants / stream init)
 sys.path.insert(0, str(Path(__file__).parent))
 try:
-    from bootstrap import get_data_dir, get_jm_paths, JM_BASE, CONTEXT_TOKENS_FALLBACK, WARN, THRESHOLD, TURN_THRESHOLD, CHAR_THRESHOLD
+    from bootstrap import get_data_dir, get_jm_paths, JM_BASE, CONTEXT_TOKENS_FALLBACK, CONTEXT_WINDOW_OVERHEAD, WARN, THRESHOLD, TURN_THRESHOLD, CHAR_THRESHOLD
 except Exception:
     try:
         from pathlib import Path as _P; from datetime import datetime as _dt; import traceback as _tb
@@ -160,7 +160,12 @@ def main():
         pid_display = f"{pid_val} ✓" if foreman_alive == "alive" else f"{pid_val or '?'} ✗"
         ctx_warn_status = "yes" if P.get("context_warn", DATA_DIR / "context_warn.flag").exists() else "none"
         turn_pct_f  = round(total_turns / TURN_THRESHOLD * 100, 1)
-        token_pct_f = round(context_tokens / CONTEXT_TOKENS_FALLBACK * 100, 1) if context_tokens else 0.0
+        try:
+            cj = json.loads((Path.home() / '.claude.json').read_text(encoding='utf-8'))
+            eff_window = max(int(cj.get('cachedGrowthBookFeatures', {}).get('tengu_hawthorn_window', CONTEXT_TOKENS_FALLBACK)) - CONTEXT_WINDOW_OVERHEAD, 1)
+        except Exception:
+            eff_window = CONTEXT_TOKENS_FALLBACK - CONTEXT_WINDOW_OVERHEAD
+        token_pct_f = round(context_tokens / eff_window * 100, 1) if context_tokens else 0.0
 
         msg = (
             f"    - foreman    : {foreman_alive}\n"

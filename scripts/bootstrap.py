@@ -17,6 +17,7 @@ from pathlib import Path
 # prior bug (167K fallback) reproduced: WARN=87%×167K≈145K, THRESHOLD=97%×167K≈162K
 # → converted to 200K basis: 145K/200K=72%, 162K/200K=81%
 CONTEXT_TOKENS_FALLBACK = 200_000
+CONTEXT_WINDOW_OVERHEAD = 6_000   # CC auto-compact fires before raw window limit
 TURN_THRESHOLD = 30
 CHAR_THRESHOLD = 50_000
 WARN      = 72   # 144K tokens → CC ~19% remaining

@@ -13,7 +13,7 @@ from pathlib import Path
 # [1] load bootstrap (paths / constants / stream init)
 sys.path.insert(0, str(Path(__file__).parent))
 try:
-    from bootstrap import get_data_dir, get_jm_paths, JM_BASE, CONTEXT_TOKENS_FALLBACK, TURN_THRESHOLD, register_session
+    from bootstrap import get_data_dir, get_jm_paths, JM_BASE, CONTEXT_TOKENS_FALLBACK, CONTEXT_WINDOW_OVERHEAD, TURN_THRESHOLD, register_session
 except Exception:
     try:
         from pathlib import Path as _P; from datetime import datetime as _dt; import traceback as _tb
@@ -57,7 +57,12 @@ def read_token_pct_from_transcript(transcript_path_str):
                             last_tokens = tokens
                 except Exception:
                     continue
-        return min(round(last_tokens / CONTEXT_TOKENS_FALLBACK * 100), 999) if last_tokens else 0
+        try:
+            cj = json.loads((Path.home() / '.claude.json').read_text(encoding='utf-8'))
+            eff_window = max(int(cj.get('cachedGrowthBookFeatures', {}).get('tengu_hawthorn_window', CONTEXT_TOKENS_FALLBACK)) - CONTEXT_WINDOW_OVERHEAD, 1)
+        except Exception:
+            eff_window = CONTEXT_TOKENS_FALLBACK - CONTEXT_WINDOW_OVERHEAD
+        return min(round(last_tokens / eff_window * 100), 999) if last_tokens else 0
     except Exception:
         return 0
 
@@ -580,9 +585,14 @@ def main():
         foreman_status = "✓" if is_foreman_alive() else "✗"
 
     # 4-2. write session start token count — must come after branch cleanup (branches delete token_usage)
+    try:
+        cj = json.loads((Path.home() / '.claude.json').read_text(encoding='utf-8'))
+        eff_window = max(int(cj.get('cachedGrowthBookFeatures', {}).get('tengu_hawthorn_window', CONTEXT_TOKENS_FALLBACK)) - CONTEXT_WINDOW_OVERHEAD, 1)
+    except Exception:
+        eff_window = CONTEXT_TOKENS_FALLBACK - CONTEXT_WINDOW_OVERHEAD
     if start_token_pct > 0:
         try:
-            token_count = round(start_token_pct * CONTEXT_TOKENS_FALLBACK / 100)
+            token_count = round(start_token_pct * eff_window / 100)
             P["token_usage"].write_text(str(token_count), encoding='utf-8')
         except Exception:
             pass
@@ -652,7 +662,7 @@ def main():
     is_new = hp_data is None
 
     line1 = f"[Junior Mark] foreman {foreman_status} | Foreman ID: {pid_display} | Session ID: {session_short}"
-    line2 = f"[Junior Mark] {TURN_THRESHOLD} turns {CONTEXT_TOKENS_FALLBACK:,} tokens | {msg}"
+    line2 = f"[Junior Mark] {TURN_THRESHOLD} turns {eff_window:,} tokens | {msg}"
 
     tui_msg = f"\n{line1}\n{line2}"
     if session_warn_content:
