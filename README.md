@@ -157,9 +157,10 @@ Data stored at: `~/.claude/plugins/junior_mark/data/{project-slug}/`
 > | Python 3.8+ | `python --version` |
 > | Claude Code | `claude --version` |
 
+
 ```bash
 cd installer
-python install.py
+install.bat
 ```
 
 Restart Claude Code after installation. The system activates automatically.

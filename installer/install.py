@@ -47,25 +47,35 @@ def install():
     settings_path = CLAUDE_DIR / 'settings.json'
     if settings_path.exists():
         shutil.copy2(settings_path, str(settings_path) + '.bak')
-        settings = json.loads(settings_path.read_text(encoding='utf-8'))
+        text = settings_path.read_text(encoding='utf-8')
+        text = re.sub(r',\s*([}\]])', r'\1', text)  # strip trailing commas
+        settings = json.loads(text)
     else:
         settings = {}
 
     hooks_file = INSTALLER_DIR / 'adding to settings.json'
     if not hooks_file.exists():
         err("installer/adding to settings.json not found")
-    new_hooks = json.loads('{' + hooks_file.read_text(encoding='utf-8') + '}')['hooks']
+    adding = json.loads('{' + hooks_file.read_text(encoding='utf-8') + '}')
 
-    if 'hooks' not in settings:
-        settings['hooks'] = {}
-    for event, new_entries in new_hooks.items():
-        existing = settings['hooks'].get(event, [])
-        kept = [e for e in existing if not any('junior_mark' in h.get('command', '') for h in e.get('hooks', []))]
-        settings['hooks'][event] = kept + new_entries
+    # merge hooks
+    if 'hooks' in adding:
+        if 'hooks' not in settings:
+            settings['hooks'] = {}
+        for event, new_entries in adding['hooks'].items():
+            existing = settings['hooks'].get(event, [])
+            kept = [e for e in existing if not any('junior_mark' in h.get('command', '') for h in e.get('hooks', []))]
+            settings['hooks'][event] = kept + new_entries
+
+    # copy non-hooks top-level keys (e.g. statusLine)
+    for key, value in adding.items():
+        if key != 'hooks':
+            settings[key] = value
+
     settings_path.write_text(
         json.dumps(settings, ensure_ascii=False, indent=2), encoding='utf-8'
     )
-    ok("settings.json hooks merged")
+    ok("settings.json merged (hooks + statusLine)")
 
     # 5. add @include lines to CLAUDE.md (idempotent)
     claude_md = CLAUDE_DIR / 'CLAUDE.md'
@@ -100,4 +110,8 @@ def install():
 
 
 if __name__ == '__main__':
-    install()
+    try:
+        install()
+    except SystemExit:
+        pass
+    input("\nPress Enter to exit...")

@@ -27,7 +27,7 @@ Claude Junior Mark(jm)는 Claude Code 세션을 관리하는 백그라운드 시
 ## 설치
 ```bash
 cd installer
-python install.py
+install.bat
 ```
 
 설치 후 Claude Code를 재시작하면 자동으로 활성됨.
