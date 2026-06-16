@@ -69,6 +69,10 @@ install.bat
 | `restart~` | 포맨 kill 후 재시작 | — |
 | `guest-end~` | 게스트 세션 완전 종료 | — |
 
+> **두 가지 그룹:**
+> - **세션 상태 명령** (`start~` / `move~` / `end~`): retire_flag, reset_flag, session_warn 등 세션 파일 변경
+> - **프로세스 제어 명령** (`on~` / `off~` / `restart~`): 포맨 프로세스만 제어, 세션 상태 무관. ⚠️ `restart~`는 `start~`의 연장선이 아님.
+
 > `~` 접미사가 있어야 명령으로 인식. 일반 대화 중 단어만 언급해도 동작하진 않음.
 
 ---

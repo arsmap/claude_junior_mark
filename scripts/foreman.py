@@ -104,10 +104,15 @@ def compute_metrics(entries):
 
     context_tokens = read_token_usage()
     try:
-        claude_json = json.loads((Path.home() / '.claude.json').read_text(encoding='utf-8'))
-        context_window = int(claude_json.get('cachedGrowthBookFeatures', {}).get('tengu_hawthorn_window', CONTEXT_TOKENS_FALLBACK))
+        # prefer the live window size statusline.py recorded from CC stdin (foreman has no direct access to it)
+        live_file = P.get("ctx_window_live") or DATA_DIR / "ctx_window_live.txt"
+        context_window = int(Path(live_file).read_text(encoding='utf-8').strip())
     except Exception:
-        context_window = CONTEXT_TOKENS_FALLBACK
+        try:
+            claude_json = json.loads((Path.home() / '.claude.json').read_text(encoding='utf-8'))
+            context_window = int(claude_json.get('cachedGrowthBookFeatures', {}).get('tengu_hawthorn_window', CONTEXT_TOKENS_FALLBACK))
+        except Exception:
+            context_window = CONTEXT_TOKENS_FALLBACK
     context_window = max(context_window - CONTEXT_WINDOW_OVERHEAD, 1)
     token_pct = min(round(context_tokens / context_window * 100), 999) if context_tokens > 0 else 0
 
@@ -163,7 +168,7 @@ def write_context_warn(metrics):
 def write_context_threshold(metrics):
     pct = metrics.get("token_pct", 0)
     tokens = metrics.get("context_tokens", 0)
-    msg = f"Context {pct}% exceeded ({tokens:,} tokens) — run move~ or /foreman retire now."
+    msg = f"Context {pct}% exceeded ({tokens:,} tokens) — run move~ (do NOT /compact, it will fail at this level)"
     try:
         P["context_threshold"].write_text(msg, encoding="utf-8")
     except Exception as e:

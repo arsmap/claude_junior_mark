@@ -284,10 +284,10 @@ def main():
                 else:
                     dbg(f"guest session detected — skipping relay ({my_session_id[:8]})")
                     # handle guest session commands
-                    _GUEST_BLOCKED_EXACT = ["move~", "end~", "start~"]
+                    _GUEST_BLOCKED_EXACT = ["move~", "end~", "start~", "on~", "off~", "restart~"]
                     _prompt_stripped = prompt.strip() if prompt else ""
 
-                    if _prompt_stripped in _GUEST_BLOCKED_EXACT or _prompt_stripped.startswith("/foreman"):
+                    if _prompt_stripped in _GUEST_BLOCKED_EXACT:
                         print(json.dumps({"decision": "block", "reason": "This command is not available in a guest session."}, ensure_ascii=False))
                         sys.stdout.flush()
                         return
@@ -332,16 +332,14 @@ def main():
         except Exception as e:
             dbg(f"token read error: {e}")
 
-    # detect foreman_retire.flag — block duplicate move~ execution
-    # (must block before relay/session_warn write to prevent duplicate entries)
+    # detect foreman_retire.flag — clear it so move~ can run again (allows re-retire after extra turns)
     retire_flag = P.get("retire_flag", DATA_DIR / "foreman_retire.flag")
     if prompt and not is_guest and prompt.strip() in RETIRE_KEYWORDS and Path(retire_flag).exists():
-        print(json.dumps({
-            "decision": "block",
-            "reason": "[Junior Mark] ⚠️ Session move already completed. Open a new session or type end~ to stop."
-        }, ensure_ascii=False))
-        sys.stdout.flush()
-        return
+        try:
+            Path(retire_flag).unlink(missing_ok=True)
+            dbg("retire_flag cleared — allowing re-retire")
+        except Exception as e:
+            dbg(f"retire_flag clear error: {e}")
 
     # on~ / off~ / restart~ — pure foreman control (no session state change)
     if prompt and not is_guest:
@@ -413,6 +411,18 @@ def main():
 
     # start keyword detected → run foreman_on.py (claim session lock)
     if prompt and not is_guest and prompt.strip() in START_KEYWORDS:
+        # un-retire: clear retire_flag + session_warn so move~ can be used again
+        try:
+            _retire_flag = P.get("retire_flag", DATA_DIR / "foreman_retire.flag")
+            _session_warn = P.get("session_warn", DATA_DIR / "session_warn.txt")
+            if Path(_retire_flag).exists():
+                Path(_retire_flag).unlink(missing_ok=True)
+                dbg("retire_flag cleared by start~")
+            if Path(_session_warn).exists():
+                Path(_session_warn).unlink(missing_ok=True)
+                dbg("session_warn cleared by start~")
+        except Exception as e:
+            dbg(f"un-retire error: {e}")
         try:
             foreman_on_py = Path(__file__).parent / 'foreman_on.py'
             _cc_pid = find_cc_pid()
@@ -506,7 +516,7 @@ def main():
         if prompt and prompt.strip() in ("end~", "move~"):
             print(json.dumps({
                 "decision": "block",
-                "reason": "[Junior Mark] ⚠️ Session already ended. Type start~ or /foreman restart to reactivate."
+                "reason": "[Junior Mark] ⚠️ Session already ended. Type start~ or restart~ to reactivate."
             }, ensure_ascii=False))
             sys.stdout.flush()
             return
@@ -515,10 +525,10 @@ def main():
         except Exception:
             flag_content = ""
         if flag_content == "forced":
-            warnings.append("[Junior Mark] ⚠️ Session interrupted by terminal close. Type start~ or /foreman restart to continue.")
+            warnings.append("[Junior Mark] ⚠️ Session interrupted by terminal close. Type start~ or restart~ to continue.")
             dbg("foreman_reset.flag detected → re-entered after CC force-close")
         else:
-            warnings.append("[Junior Mark] ⚠️ Session already ended. Type start~ or /foreman restart to continue.")
+            warnings.append("[Junior Mark] ⚠️ Session already ended. Type start~ or restart~ to continue.")
             dbg("foreman_reset.flag detected → input after intentional end~")
 
     # foreman_retire.flag detected → user still typing after move~ (guide to prevent duplicate move)

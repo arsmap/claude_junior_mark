@@ -41,6 +41,12 @@ def main():
     # context window: prefer CC stdin, fallback to dynamic read
     ctx_size = cw.get('context_window_size', 0)
     if ctx_size:
+        # persist the live raw window size so other hooks (no access to CC stdin context_window)
+        # can use it instead of the stale .claude.json cache
+        try:
+            P.get('ctx_window_live', DATA_DIR / 'ctx_window_live.txt').write_text(str(ctx_size), encoding='utf-8')
+        except Exception:
+            pass
         ctx_window = max(ctx_size - CONTEXT_WINDOW_OVERHEAD, 1)
     else:
         ctx_window = CONTEXT_TOKENS_FALLBACK
@@ -57,15 +63,12 @@ def main():
 
     pct = round(tokens / ctx_window * 100, 1) if ctx_window and tokens else 0.0
 
-    # turn count
+    # turn count: read pre-computed value from handoff.json (avoids relay.jsonl full scan)
     turns = 0
     try:
-        relay = P.get('relay', DATA_DIR / 'relay.jsonl')
-        if Path(relay).exists():
-            with open(relay, encoding='utf-8') as f:
-                for line in f:
-                    if '"role": "assistant"' in line or '"role":"assistant"' in line:
-                        turns += 1
+        handoff_file = P.get('handoff', DATA_DIR / 'handoff.json')
+        if Path(handoff_file).exists():
+            turns = json.loads(Path(handoff_file).read_text(encoding='utf-8')).get('metrics', {}).get('total_turns', 0)
     except Exception:
         pass
 

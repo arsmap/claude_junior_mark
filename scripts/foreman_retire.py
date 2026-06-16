@@ -179,10 +179,10 @@ def main():
             f"    - snapshot  : {snap_file.name}\n"
             f"    - decided   : {decided_count}"
         )
-        print(json.dumps({'systemMessage': f'[Junior Mark] {msg}'}, ensure_ascii=False))
+        print(f'[Junior Mark] {msg}')
         sys.stdout.flush()
     except Exception as e:
-        print(json.dumps({'systemMessage': f'[Junior Mark] snapshot save error: {e}'}, ensure_ascii=False))
+        print(f'[Junior Mark] snapshot save error: {e}')
 
 
 if __name__ == '__main__':

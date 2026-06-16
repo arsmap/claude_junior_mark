@@ -67,6 +67,10 @@ Type these in any message to trigger session management:
 | `restart~` | Kill and restart foreman | — |
 | `guest-end~` | End a guest session | — |
 
+> **Two groups:**
+> - **Session state** (`start~` / `move~` / `end~`): modify session files (retire flag, reset flag, session warn, etc.)
+> - **Process control** (`on~` / `off~` / `restart~`): foreman process only — no session state change. Note: `restart~` is NOT a variant of `start~`.
+
 > The `~` suffix is required. Mentioning the word alone in conversation does nothing.
 
 ---

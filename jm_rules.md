@@ -40,11 +40,17 @@ If the path does not exist, treat as an error (no fallback).
 | `start~` | Claim session lock + start foreman (reactivate after end~) |
 | `move~` | Retire session — save snapshot + pass context to next session |
 | `end~` | Stop foreman + create reset flag for next session |
+| `on~` | Start foreman only (no session lock claim) |
+| `off~` | Stop foreman only (no session state change) |
+| `restart~` | Stop + restart foreman (pure process control, handled by hook) |
+
+**Session state commands** (`start~` / `move~` / `end~`): modify session files (retire_flag, reset_flag, session_warn, etc.)
+**Process control commands** (`on~` / `off~` / `restart~`): foreman process only — no session state change, not affected by retire_flag. Note: `restart~` is NOT a variant of `start~`.
 
 ## 3. Session Start Context Rules
 
 **Check system-reminder before the first message:**
-- `IS_GUEST=true` or `IS_NEW_SESSION=true` → respond immediately (skip handoff. Rule 5 `💾 farewell detected` signal still applies with highest priority)
+- `IS_GUEST=true` or `IS_NEW_SESSION=true` → **respond immediately. Do NOT read any handoff files. Do NOT output "Reading handoff."** (Rule 5 `💾 farewell detected` signal still applies with highest priority)
 - `Session already ended` → output the following and stop:
   ```
   Session has ended. Type start~ to begin a new session.
