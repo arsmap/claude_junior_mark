@@ -158,7 +158,7 @@ def write_handoff(entries, metrics):
 def write_context_warn(metrics):
     pct = metrics.get("token_pct", 0)
     tokens = metrics.get("context_tokens", 0)
-    msg = f"Context {pct}% reached ({tokens:,} tokens) — consider starting a new session."
+    msg = f"Context {pct}% reached ({tokens:,} tokens) — prepare to run move~. Avoid /compact above 80%."
     try:
         P["context_warn"].write_text(msg, encoding="utf-8")
     except Exception as e:
@@ -168,7 +168,7 @@ def write_context_warn(metrics):
 def write_context_threshold(metrics):
     pct = metrics.get("token_pct", 0)
     tokens = metrics.get("context_tokens", 0)
-    msg = f"Context {pct}% exceeded ({tokens:,} tokens) — run move~ (do NOT /compact, it will fail at this level)"
+    msg = f"Context {pct}% exceeded ({tokens:,} tokens) — run move~ now. /compact likely to fail at this level."
     try:
         P["context_threshold"].write_text(msg, encoding="utf-8")
     except Exception as e:
