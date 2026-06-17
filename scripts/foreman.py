@@ -311,6 +311,7 @@ def main():
                 pct = metrics.get("token_pct", 0)
 
                 # auto-clear mute flag when context drops below WARN (compact / new session / any reduction)
+                # step01
                 force_retire_mute_f = Path(P.get("force_retire_mute", DATA_DIR / "force_retire_mute.flag"))
                 if force_retire_mute_f.exists() and pct < WARN:
                     try:
@@ -318,7 +319,23 @@ def main():
                         log(f"force_retire_mute cleared — context dropped below WARN ({pct}%)")
                     except Exception as e:
                         log(f"force_retire_mute clear error: {e}")
-
+                # step02
+                context_warn_f = Path(P.get("context_warn", DATA_DIR / "context_warn.flag"))
+                if context_warn_f.exists() and pct < WARN:
+                    try:
+                        context_warn_f.unlink(missing_ok=True)
+                        log(f"context_warn cleared — context dropped below WARN ({pct}%)")
+                    except Exception as e:
+                        log(f"context_warn clear error: {e}")
+                # step03
+                context_threshold_f = Path(P.get("context_threshold", DATA_DIR / "context_threshold.flag"))
+                if context_threshold_f.exists() and pct < WARN:
+                    try:
+                        context_threshold_f.unlink(missing_ok=True)
+                        log(f"context_threshold cleared — context dropped below WARN ({pct}%)")
+                    except Exception as e:
+                        log(f"context_threshold clear error: {e}")
+                # step04                        
                 if metrics.get("total_turns", 0) >= 3:
                     if pct >= THRESHOLD:
                         write_context_threshold(metrics)
