@@ -310,6 +310,15 @@ def main():
                 # preventing false warning on first response
                 pct = metrics.get("token_pct", 0)
 
+                # auto-clear mute flag when context drops below WARN (compact / new session / any reduction)
+                force_retire_mute_f = Path(P.get("force_retire_mute", DATA_DIR / "force_retire_mute.flag"))
+                if force_retire_mute_f.exists() and pct < WARN:
+                    try:
+                        force_retire_mute_f.unlink(missing_ok=True)
+                        log(f"force_retire_mute cleared — context dropped below WARN ({pct}%)")
+                    except Exception as e:
+                        log(f"force_retire_mute clear error: {e}")
+
                 if metrics.get("total_turns", 0) >= 3:
                     if pct >= THRESHOLD:
                         write_context_threshold(metrics)

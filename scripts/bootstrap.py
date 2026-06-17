@@ -17,11 +17,11 @@ from pathlib import Path
 # prior bug (167K fallback) reproduced: WARN=87%×167K≈145K, THRESHOLD=97%×167K≈162K
 # → converted to 200K basis: 145K/200K=72%, 162K/200K=81%
 CONTEXT_TOKENS_FALLBACK = 200_000
-CONTEXT_WINDOW_OVERHEAD = 20_000  # CC compact triggers at ~180K effective window (measured: 177K/200K=88.5% at compact)
+CONTEXT_WINDOW_OVERHEAD = 30_000  # CC compact triggers at ~170K effective window
 TURN_THRESHOLD = 30
 CHAR_THRESHOLD = 50_000
-WARN      = 72   # 144K tokens → CC ~19% remaining
-THRESHOLD = 81   # 162K tokens → CC  ~9% remaining
+WARN      = 82   # 164K tokens → CC ~10% remaining
+THRESHOLD = 92   # 184K tokens → CC  ~0% remaining
 
 # ── track caller filename ───────────────────────────────────────
 _stack = inspect.stack()
