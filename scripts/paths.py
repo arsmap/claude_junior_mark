@@ -46,7 +46,7 @@ def lookup_session(session_id):
         pass
     return None
 
-def get_data_dir(*, forced_path=None, hook_cwd=None, ignore_cur_file=False, session_id=None):
+def get_data_dir(*, forced_path=None, hook_cwd=None, session_id=None):
     # """Resolve Junior Mark data directory (unified logic)"""
     # 0. highest priority: explicitly passed path (e.g. from sys.argv)
     if forced_path:
@@ -68,16 +68,7 @@ def get_data_dir(*, forced_path=None, hook_cwd=None, ignore_cur_file=False, sess
         if result:
             return result
 
-    # 3. current_data_dir.txt (for skill / manual control)
-    if not ignore_cur_file:
-        cur_file = JM_BASE / 'current_data_dir.txt'
-        try:
-            if cur_file.exists():
-                p = Path(cur_file.read_text(encoding='utf-8').strip())
-                if p.exists(): return p
-        except: pass
-
-    # 4. hook_cwd (path provided by Claude Code)
+    # 3. hook_cwd (path provided by Claude Code)
     cwd = Path(hook_cwd or os.environ.get('PWD', os.getcwd()))
 
     # fall back to HOME when accessing system folders
@@ -97,6 +88,7 @@ def get_jm_paths(d):
         "session_warn": d / "session_warn.txt",
         "last_prompt": d / "last_prompt.txt", "usage": d / "transcript_usage.txt",
         "token_usage": d / "token_usage.txt",
+        "ctx_window_live": d / "ctx_window_live.txt",
         "pre_retire_summary": d / "pre_retire_summary.json",
         "retire_data": d / "retire_data.json",
         "handoff_prev": d / "handoff_prev.json",

@@ -58,10 +58,15 @@ def read_token_pct_from_transcript(transcript_path_str):
                 except Exception:
                     continue
         try:
-            cj = json.loads((Path.home() / '.claude.json').read_text(encoding='utf-8'))
-            eff_window = max(int(cj.get('cachedGrowthBookFeatures', {}).get('tengu_hawthorn_window', CONTEXT_TOKENS_FALLBACK)) - CONTEXT_WINDOW_OVERHEAD, 1)
+            # prefer the live window size statusline.py recorded from CC stdin (SessionStart has no direct access to it)
+            live_file = P.get("ctx_window_live") or DATA_DIR / "ctx_window_live.txt"
+            eff_window = max(int(Path(live_file).read_text(encoding='utf-8').strip()) - CONTEXT_WINDOW_OVERHEAD, 1)
         except Exception:
-            eff_window = CONTEXT_TOKENS_FALLBACK - CONTEXT_WINDOW_OVERHEAD
+            try:
+                cj = json.loads((Path.home() / '.claude.json').read_text(encoding='utf-8'))
+                eff_window = max(int(cj.get('cachedGrowthBookFeatures', {}).get('tengu_hawthorn_window', CONTEXT_TOKENS_FALLBACK)) - CONTEXT_WINDOW_OVERHEAD, 1)
+            except Exception:
+                eff_window = CONTEXT_TOKENS_FALLBACK - CONTEXT_WINDOW_OVERHEAD
         return min(round(last_tokens / eff_window * 100), 999) if last_tokens else 0
     except Exception:
         return 0
@@ -278,7 +283,7 @@ def main():
     # 2. initialize path system
     # read session_id first to prioritize session_map lookup — prevents hook CWD pollution
     session_id = data.get('session_id', '')
-    DATA_DIR = get_data_dir(hook_cwd=data.get('cwd'), ignore_cur_file=True, session_id=session_id)
+    DATA_DIR = get_data_dir(hook_cwd=data.get('cwd'), session_id=session_id)
 
     # validate DATA_DIR by scanning cc_pid.txt — fallback when session_map is stale
     try:
@@ -339,7 +344,20 @@ def main():
         except Exception:
             pass
 
-    # 3-2. clear old session flag — always remove on new session start
+    # 3-2. early handoff.json zero — before any branch logic so StatusLine sees 0/30T immediately
+    try:
+        existing = {}
+        if P["handoff"].exists():
+            try:
+                existing = json.loads(P["handoff"].read_text(encoding='utf-8'))
+            except Exception:
+                pass
+        existing.setdefault('metrics', {})['total_turns'] = 0
+        P["handoff"].write_text(json.dumps(existing, ensure_ascii=False, indent=2), encoding='utf-8')
+    except Exception:
+        pass
+
+    # 3-4. clear old session flag — always remove on new session start
     try:
 #        old_flag = Path.home() / '.claude' / 'junior_mark' / 'old_session.flag'
         old_flag = JM_BASE / 'old_session.flag'
@@ -347,9 +365,9 @@ def main():
     except Exception:
         pass
 
-    # 3-3. session_id write deferred until main session confirmed (after guest check)
+    # 3-5. session_id write deferred until main session confirmed (after guest check)
 
-    # 3-4. measure token_pct at session start
+    # 3-6. measure token_pct at session start
     # (write token_usage.txt after branch logic — branches delete it, so write must come after)
     transcript_path = data.get('transcript_path', '')
     start_token_pct = read_token_pct_from_transcript(transcript_path)
@@ -513,6 +531,17 @@ def main():
         kill_foreman()
         try: P["pid"].unlink(missing_ok=True)
         except: pass
+        try:
+            existing = {}
+            if P["handoff"].exists():
+                try:
+                    existing = json.loads(P["handoff"].read_text(encoding='utf-8'))
+                except Exception:
+                    pass
+            existing.setdefault('metrics', {})['total_turns'] = 0
+            P["handoff"].write_text(json.dumps(existing, ensure_ascii=False, indent=2), encoding='utf-8')
+        except Exception:
+            pass
         ensure_foreman()
         for _ in range(10):
             time.sleep(0.2)
@@ -570,6 +599,17 @@ def main():
                 except FileNotFoundError: pass
             (DATA_DIR / "retire_claim.lock").unlink(missing_ok=True)
 
+        try:
+            existing = {}
+            if P["handoff"].exists():
+                try:
+                    existing = json.loads(P["handoff"].read_text(encoding='utf-8'))
+                except Exception:
+                    pass
+            existing.setdefault('metrics', {})['total_turns'] = 0
+            P["handoff"].write_text(json.dumps(existing, ensure_ascii=False, indent=2), encoding='utf-8')
+        except Exception:
+            pass
         try: P["pid"].unlink(missing_ok=True)
         except: pass
         foreman_status = "▶"
@@ -586,10 +626,15 @@ def main():
 
     # 4-2. write session start token count — must come after branch cleanup (branches delete token_usage)
     try:
-        cj = json.loads((Path.home() / '.claude.json').read_text(encoding='utf-8'))
-        eff_window = max(int(cj.get('cachedGrowthBookFeatures', {}).get('tengu_hawthorn_window', CONTEXT_TOKENS_FALLBACK)) - CONTEXT_WINDOW_OVERHEAD, 1)
+        # prefer the live window size statusline.py recorded from CC stdin (SessionStart has no direct access to it)
+        live_file = P.get("ctx_window_live") or DATA_DIR / "ctx_window_live.txt"
+        eff_window = max(int(Path(live_file).read_text(encoding='utf-8').strip()) - CONTEXT_WINDOW_OVERHEAD, 1)
     except Exception:
-        eff_window = CONTEXT_TOKENS_FALLBACK - CONTEXT_WINDOW_OVERHEAD
+        try:
+            cj = json.loads((Path.home() / '.claude.json').read_text(encoding='utf-8'))
+            eff_window = max(int(cj.get('cachedGrowthBookFeatures', {}).get('tengu_hawthorn_window', CONTEXT_TOKENS_FALLBACK)) - CONTEXT_WINDOW_OVERHEAD, 1)
+        except Exception:
+            eff_window = CONTEXT_TOKENS_FALLBACK - CONTEXT_WINDOW_OVERHEAD
     if start_token_pct > 0:
         try:
             token_count = round(start_token_pct * eff_window / 100)

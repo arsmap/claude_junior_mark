@@ -101,10 +101,15 @@ def update_handoff(DATA_DIR, P, last_prompt_file):
     except Exception: pass
     context_window = CONTEXT_TOKENS_FALLBACK
     try:
-        claude_json = json.loads((Path.home() / '.claude.json').read_text(encoding='utf-8'))
-        context_window = int(claude_json.get('cachedGrowthBookFeatures', {}).get('tengu_hawthorn_window', CONTEXT_TOKENS_FALLBACK))
+        # prefer the live window size statusline.py recorded from CC stdin (Stop hook has no direct access to it)
+        live_file = P.get("ctx_window_live") or DATA_DIR / "ctx_window_live.txt"
+        context_window = int(Path(live_file).read_text(encoding='utf-8').strip())
     except Exception:
-        pass
+        try:
+            claude_json = json.loads((Path.home() / '.claude.json').read_text(encoding='utf-8'))
+            context_window = int(claude_json.get('cachedGrowthBookFeatures', {}).get('tengu_hawthorn_window', CONTEXT_TOKENS_FALLBACK))
+        except Exception:
+            pass
     context_window = max(context_window - CONTEXT_WINDOW_OVERHEAD, 1)
     token_pct = min(round(context_tokens / context_window * 100), 999) if context_tokens > 0 else 0
 
@@ -160,7 +165,7 @@ def main():
         data = {}
 
     my_session_id = data.get('session_id', '')
-    DATA_DIR = get_data_dir(hook_cwd=data.get('cwd'), ignore_cur_file=True, session_id=my_session_id)
+    DATA_DIR = get_data_dir(hook_cwd=data.get('cwd'), session_id=my_session_id)
     P = get_jm_paths(DATA_DIR)
 
     text = extract_text(data)

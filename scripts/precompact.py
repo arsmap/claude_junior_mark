@@ -40,7 +40,7 @@ def main():
 
     # just before compaction — token count will drop after compact, so existing warning flags are stale → delete
     try:
-        DATA_DIR = get_data_dir(hook_cwd=data.get('cwd'), ignore_cur_file=True, session_id=data.get('session_id', ''))
+        DATA_DIR = get_data_dir(hook_cwd=data.get('cwd'), session_id=data.get('session_id', ''))
         P = get_jm_paths(DATA_DIR)
         for key in ("context_warn", "context_threshold"):
             f = P.get(key, DATA_DIR / f"{key}.flag")

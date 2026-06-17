@@ -200,7 +200,7 @@ def main():
     # use cwd + session_id from hook JSON — session_id map takes priority (prevents CWD pollution)
     HOOK_CWD = data.get('cwd')
     my_session_id = data.get('session_id', '')
-    DATA_DIR = get_data_dir(hook_cwd=HOOK_CWD, ignore_cur_file=True, session_id=my_session_id)
+    DATA_DIR = get_data_dir(hook_cwd=HOOK_CWD, session_id=my_session_id)
     P = get_jm_paths(DATA_DIR)
 
     relay_file        = DATA_DIR / "relay.jsonl"
