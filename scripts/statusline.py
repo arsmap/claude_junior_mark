@@ -93,8 +93,25 @@ def main():
 
     dot = "🔴" if pct >= THRESHOLD else ("🟡" if pct >= WARN else "🟢")
     if not foreman_alive:
-        if turns == 0:
-            dot = "⚪"  # new session startup — foreman may not be ready yet
+        # Detect new session startup by comparing session IDs
+        current_sid = data.get('session_id', '')
+        stored_sid = ''
+        try:
+            sid_path = Path(P.get('session_id', DATA_DIR / 'current_session_id.txt'))
+            if sid_path.exists():
+                stored_sid = sid_path.read_text(encoding='utf-8').strip()
+        except Exception:
+            pass
+
+        if current_sid and current_sid != stored_sid:
+            # New session: IDs differ → show 0 before session_start.py runs
+            tokens = 0
+            turns = 0
+            pct = 0.0
+            dot = "⚪"
+            foreman_pid_str = "..."
+        elif turns == 0:
+            dot = "⚪"  # same session, foreman not yet ready
             try:
                 pid_file_path = P.get('pid', DATA_DIR / 'foreman.pid')
                 if Path(pid_file_path).exists():
@@ -106,7 +123,7 @@ def main():
             except Exception:
                 foreman_pid_str = "..."
         else:
-            dot = "⚫"
+            dot = "⚫"  # mid-session foreman death — show last known values
     filled = max(0, min(20, round(pct / 100 * 20)))
     bar = "█" * filled + "░" * (20 - filled)
     k_tok = f"{tokens // 1000}K" if tokens >= 1000 else str(tokens)

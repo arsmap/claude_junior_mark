@@ -356,6 +356,10 @@ def main():
         P["handoff"].write_text(json.dumps(existing, ensure_ascii=False, indent=2), encoding='utf-8')
     except Exception:
         pass
+    try:
+        P["token_usage"].write_text("0", encoding='utf-8')
+    except Exception:
+        pass
 
     # 3-4. clear old session flag — always remove on new session start
     try:
@@ -542,6 +546,10 @@ def main():
             P["handoff"].write_text(json.dumps(existing, ensure_ascii=False, indent=2), encoding='utf-8')
         except Exception:
             pass
+        try:
+            P["token_usage"].write_text("0", encoding='utf-8')
+        except Exception:
+            pass
         ensure_foreman()
         for _ in range(10):
             time.sleep(0.2)
@@ -608,6 +616,10 @@ def main():
                     pass
             existing.setdefault('metrics', {})['total_turns'] = 0
             P["handoff"].write_text(json.dumps(existing, ensure_ascii=False, indent=2), encoding='utf-8')
+        except Exception:
+            pass
+        try:
+            P["token_usage"].write_text("0", encoding='utf-8')
         except Exception:
             pass
         try: P["pid"].unlink(missing_ok=True)
