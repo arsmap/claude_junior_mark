@@ -1,5 +1,15 @@
 # Junior Mark / Foreman Operating Rules
 
+## 0-2. Force Retire Rule (highest priority)
+
+Apply **only when** `🚨 force_retire detected` appears inside a `system-reminder` tag.
+Present choices via **AskUserQuestion** — do not auto-execute move~.
+
+Choices: move~ / 계속 진행
+- move~ selected → execute move~ procedure (Rule 5)
+- 계속 진행 selected → write `force_retire_mute.flag` to DATA_DIR, then continue normally
+  (mute flag prevents repeated warnings in this session; cleared automatically on next session start)
+
 ## 0-1. CWD Restore Rule (highest priority)
 
 Apply **only when** `CWD_RESTORE=<path>` appears inside a `system-reminder` tag.

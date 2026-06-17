@@ -41,9 +41,12 @@ def main():
     if P.get('retire_flag', DATA_DIR / 'foreman_retire.flag').exists():
         return
 
-    # Skip if force_retire already pending
+    # Skip if force_retire already pending or muted by user
     force_flag = Path(P.get('force_retire', DATA_DIR / 'force_retire.flag'))
     if force_flag.exists():
+        return
+    if Path(P.get('force_retire_mute', DATA_DIR / 'force_retire_mute.flag')).exists():
+        dbg("force_retire muted — skip")
         return
 
     # Token count from CC stdin context_window

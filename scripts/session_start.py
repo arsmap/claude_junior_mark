@@ -360,6 +360,11 @@ def main():
         P["token_usage"].write_text("0", encoding='utf-8')
     except Exception:
         pass
+    try:
+        if P.get("force_retire_mute") and Path(P["force_retire_mute"]).exists():
+            Path(P["force_retire_mute"]).unlink(missing_ok=True)
+    except Exception:
+        pass
 
     # 3-4. clear old session flag — always remove on new session start
     try:

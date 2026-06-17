@@ -4,6 +4,17 @@
     "shell": "bash"
   },
   "hooks": {
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python ~/.claude/plugins/junior_mark/scripts/post_tool_use_jm.py 2>>\"$HOME/.claude/plugins/junior_mark/debug/hook_stderr.txt\" || true",
+            "shell": "bash"
+          }
+        ]
+      }
+    ],
     "SessionStart": [
       {
         "hooks": [

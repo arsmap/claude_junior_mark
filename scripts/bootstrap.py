@@ -79,6 +79,7 @@ except Exception as _paths_err:
         "cwd_restore":       d / "cwd_restore.flag",
         "cwd_restored":      d / "cwd_restored.flag",
         "force_retire":      d / "force_retire.flag",
+        "force_retire_mute": d / "force_retire_mute.flag",
     }
 
 # ── ensure required base directories exist ───────────────────────
