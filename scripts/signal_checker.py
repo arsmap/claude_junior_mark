@@ -466,6 +466,7 @@ def main():
 
     warnings = []
     farewell_detected = False
+    force_retire_detected = False
     cwd_restore_path = None
 
     # farewell detection (only when no reset_flag/retire_flag — skip if session already ended/moved)
@@ -558,6 +559,18 @@ def main():
         except Exception:
             pass
 
+    # force_retire.flag detected (written by PostToolUse on context spike ≥ THRESHOLD mid-tool)
+    force_retire_f = Path(P.get("force_retire", DATA_DIR / "force_retire.flag"))
+    if force_retire_f.exists() and not already_retired and not P["reset_flag"].exists():
+        try:
+            msg = force_retire_f.read_text(encoding='utf-8').strip()
+            force_retire_f.unlink(missing_ok=True)
+            warnings.insert(0, f"[Junior Mark] 🚨 {msg}")
+            force_retire_detected = True
+            dbg(f"force_retire detected: {msg[:80]}")
+        except Exception as e:
+            dbg(f"force_retire read error: {e}")
+
     # context_threshold.flag detected (written by foreman when THRESHOLD exceeded)
     ctx_threshold = P.get("context_threshold", DATA_DIR / "context_threshold.flag")
     if Path(ctx_threshold).exists():
@@ -593,6 +606,9 @@ def main():
         dbg(f"systemMessage output: {message!r}")
         out: dict[str, object] = {"systemMessage": message}
         additional_contexts = []
+        if force_retire_detected:
+            additional_contexts.insert(0, "🚨 force_retire detected — present move~/계속 진행 choices via AskUserQuestion")
+            dbg("force_retire additionalContext added")
         if farewell_detected:
             additional_contexts.append("💾 farewell detected — must present choices via AskUserQuestion tool")
             dbg("farewell additionalContext added")

@@ -78,6 +78,7 @@ except Exception as _paths_err:
         "post_compact":      d / "post_compact.flag",
         "cwd_restore":       d / "cwd_restore.flag",
         "cwd_restored":      d / "cwd_restored.flag",
+        "force_retire":      d / "force_retire.flag",
     }
 
 # ── ensure required base directories exist ───────────────────────

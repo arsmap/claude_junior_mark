@@ -1,3 +1,4 @@
 {
-  "extraPaths": ["scripts"]
+  "extraPaths": ["scripts"],
+  "reportMissingImports": false
 }
