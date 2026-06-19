@@ -363,6 +363,11 @@ def main():
             _ctrl_msg = f"off~ — {msg}"
         elif _ps in RESTART_KEYWORDS:
             stop_msg = foreman_stop(DATA_DIR, P)
+            for key in ("context_warn", "context_threshold", "reset_flag", "retire_flag", "foreman_exit"):
+                p = P.get(key)
+                if p and Path(p).exists():
+                    try: Path(p).unlink(missing_ok=True)
+                    except: pass
             start_msg = foreman_start(DATA_DIR)
             dbg(f"restart~ → {stop_msg} / {start_msg}")
             _ctrl_msg = f"restart~ — {stop_msg} → {start_msg}"
