@@ -13,7 +13,7 @@ from pathlib import Path
 
 # ── system constants ─────────────────────────────────────────────
 # context window fallback (used when live token limit is unavailable). measured baseline: 200K.
-# effective CC limit ≈ 178K (200K minus ~22K overhead).
+# effective CC limit ≈ 170K (200K minus 30K overhead = CONTEXT_WINDOW_OVERHEAD).
 # prior bug (167K fallback) reproduced: WARN=87%×167K≈145K, THRESHOLD=97%×167K≈162K
 # → converted to 200K basis: 145K/200K=72%, 162K/200K=81%
 CONTEXT_TOKENS_FALLBACK = 200_000
