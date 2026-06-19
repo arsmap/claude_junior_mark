@@ -1,47 +1,66 @@
-# Claude Junior Mark
+[[English]](./README.md) · [[한글]](./README_KO.md)
 
-**Session continuity system for Claude Code** 
-— context warnings, cross-session handoff, and a persistent background monitor.
+<h1 align="center">Claude Junior Mark</h1>
 
----
+<p align="center">
+  <b>Session continuity system for Claude Code</b><br>
+  Mitigating context saturation and loss via context warnings, cross-session handoff, and a persistent background monitor.
+</p><br>
 
-## Why this exists
+<p align="center">
+  <img src="https://img.shields.io/badge/version-1.04.25-blue" alt="Version" />
+  <img src="https://img.shields.io/badge/license-MIT-green" alt="License" />
+  <img src="https://img.shields.io/badge/python-≥_3.8-3776AB?logo=python&logoColor=white" alt="Python" />
+  <img src="https://img.shields.io/badge/platform-Windows-0078D4?logo=windows&logoColor=white" alt="Platform" />
+  <img src="https://img.shields.io/badge/Claude_Code-plugin-D97706" alt="Claude Code" />
+  <img src="https://img.shields.io/badge/PRs-welcome-purple" alt="PRs Welcome" />
+</p>
 
-Claude Code sessions end abruptly when the context window fills up. You lose your train of thought, and the next session starts cold with no memory of what you were doing.
+## Why this exists  
+Claude Code sessions end abruptly when the context window fills up.  
+You lose your train of thought, and the next session starts cold with no memory of what you were doing.  
 
-Claude Junior Mark (jm) solves this with three things:
+Claude Junior Mark (hereafter referred to as jm) solves this by managing your CLI sessions in the background.  
+Operating as a background daemon named 'foreman' alongside custom hooks, it continuously monitors session states and seamlessly bridges the context from one session to the next via handoffs.  
 
 | Problem | Solution |
 |---------|----------|
 | No warning before context overflow | Background foreman monitors token/turn usage and alerts at thresholds |
 | Each session starts from scratch | Handoff file carries work context to the next session automatically |
-| `/compact` resets turn counter | `PreCompact` hook reinitializes tracking state |
+| `/compact` resets turn counter | `PreCompact` hook reinitializes tracking state |  
+<br>
 
----
+## Prerequisites
+> | Requirement | Check |
+> |-------------|-------|
+> | Windows OS | `ver` |
+> | Git Bash | `bash --version` |
+> | Python 3.8+ | `python --version` |
+> | Claude Code | `claude --version` |  
+<br>
 
-## What you see at session start
-
+## Installation
+Install via Windows Terminal or Git Bash:  
+```bash
+cd installer
+install.bat
 ```
-⎿ SessionStart says:
-    [Junior Mark] foreman ✓ | HOME turns(81%) token(73%) | last message preview...
-```
 
-| Symbol | Meaning |
-|--------|---------|
-| `foreman ▶` | Foreman started fresh this session |
-| `foreman ✓` | Foreman carried over from previous session |
-| `foreman ✗` | Foreman failed to start — open a new session |
-| `turns(X%) token(X%)` | Token usage this session. Move session at 72%+ |
+Restart Claude Code after installation. The system activates automatically.  
 
----
+| Installed to | Contents |
+|-------------|---------|
+| `~/.claude/plugins/junior_mark/scripts/` | Hook scripts |
+| `~/.claude/settings.json` | Hook registrations |
+| `~/.claude/CLAUDE.md` | jm_rules.md registrations |  
+<br>
 
 ## Features
-
-- Real-time token/turn monitoring via background daemon
-- Status bar on every turn: token%, turn count, foreman PID and alive state
-- Context threshold alerts (warn at 72%, urgent at 81%)
-- Automatic handoff — next session picks up where you left off
-- Turn counter reset on `/compact`
+Real-time token/turn monitoring via background daemon  
+Status bar on every turn: token%, turn count, foreman PID and alive state  
+Context threshold alerts (warn at 82%, urgent at 92%)  
+Automatic handoff — the next session picks up where you left off  
+Turn counter reset on `/compact`  
 
 > **Recommended:** Disable Claude Code's built-in auto-compaction for best results.
 > JM manages session transitions manually, and auto-compact can interfere with handoff timing.
@@ -49,12 +68,25 @@ Claude Junior Mark (jm) solves this with three things:
 > Add this to your `~/.claude/settings.json`:
 > ```json
 > "autoCompact": false
-> ```
+> ```  
+<br>
 
----
+## What you see at session start
+```
+⎿ SessionStart says:
+    [Junior Mark] foreman ✓ | HOME turns(86%) token(73%) | last message preview...
+```
+
+| Symbol | Meaning |
+|--------|---------|
+| `foreman ▶` | Foreman started fresh this session |
+| `foreman ✓` | Foreman carried over from previous session |
+| `foreman ✗` | Foreman failed to start — open a new session |
+| `turns(X%) token(X%)` | Token usage this session. Move session at 82%+ |
+<br>
+
 
 ## Session keywords
-
 Type these in any message to trigger session management:
 
 | Keyword | Action | Next session |
@@ -71,38 +103,37 @@ Type these in any message to trigger session management:
 > - **Session state** (`start~` / `move~` / `end~`): modify session files (retire flag, reset flag, session warn, etc.)
 > - **Process control** (`on~` / `off~` / `restart~`): foreman process only — no session state change. Note: `restart~` is NOT a variant of `start~`.
 
-> The `~` suffix is required. Mentioning the word alone in conversation does nothing.
+> The `~` suffix is required. Mentioning the word alone in conversation does nothing.  
 
----
+<br>
 
 ## Status bar
-
 Shown automatically on every turn :
 
 ```
-🟢 [████████░░░░░░░░░░░░] 40.1% | 80K/200K T:26/30 | PID: 3624
+🟢 [████████░░░░░░░░░░░░] 40.1% | 80/200K 26/30T | PID:3624
 ```
 
 | Field | Description |
 |-------|-------------|
 | 🟢 / 🟡 / 🔴 | Foreman alive + context level (normal / warn / threshold) |
 | ⚫ | Foreman dead — type `restart~` to restart, or open a new session |
-| `X% \| XK/200K` | Token usage |
-| `T:N/30` | Turn count this session |
-| `PID: N` | Foreman process ID (`----` if dead) |
+| `X% | N/200K` | Token usage |
+| `N/30T` | Turn count this session |
+| `PID:N` | Foreman process ID (`----` if dead) |  
 
----
+<br>
 
 ## Context signals
-
 | signal | Meaning | Action |
 |--------|---------|--------|
 | `none` | Normal | — |
-| `warn` | Token usage > 72% | Wrap up, consider `move~` |
-| `trsd` | Token usage > 81% | Run `move~` now |
+| `warn` | Token usage > 82% | Wrap up, consider `move~` |
+| `trsd` | Token usage > 92% | Run `move~` now |  
+
+<br>
 
 ### Warning messages
-
 | Message | Response |
 |---------|----------|
 | ⚠ Context N% reached | Type `move~` |
@@ -111,18 +142,17 @@ Shown automatically on every turn :
 | ⚠ Session interrupted by terminal close | Open a new CC window or type `start~` |
 | ⚠ Session already ended | Open a new CC window or type `start~` |
 | ℹ Foreman stopped in previous session | Auto-restarted — ignore |
-| ℹ Session move requested in previous session | Context is ready — start working |
+| ℹ Session move requested in previous session | Context is ready — start working |  
 
----
+<br>
 
 ## Session flow
-
 ```
 [New session starts]
     ↓
 Foreman starts → handoff_prev loaded → conversation begins
     ↓
-warn (72%) → trsd (81%) → user decides
+warn (82%) → trsd (92%) → user decides
     ↓
 move~                    end~
     ↓                       ↓
@@ -130,11 +160,9 @@ retire                   off
 snapshot saved           foreman_reset.flag created
 next session inherits    next session starts fresh
 ```
-
----
+<br>
 
 ## How it works
-
 | Component | Role |
 |-----------|------|
 | `foreman.py` | Background daemon. Monitors token/turn/transcript every 5 seconds |
@@ -144,46 +172,14 @@ next session inherits    next session starts fresh
 | `precompact.py` | Clears warning flags and relay log before `/compact` |
 | `handoff.json` | Session summary — the file the next session reads on startup |
 
-Data stored at: `~/.claude/plugins/junior_mark/data/{project-slug}/`
+Data stored at: `~/.claude/plugins/junior_mark/data/{project-slug}/`  
+<br>
 
----
+## Acknowledgments
+The output format of the status bar was inspired by fomyio's [claude-context-monitor](https://github.com/fomyio/claude-context-monitor).
+Please note that all other core features—including session management, the foreman daemon, and the handoff system—were independently developed.  
+<br>
 
-## Installation
-
-> [!WARNING]
-> **Check requirements before installing.**
-> This system will not run if any of these are missing:
->
-> | Requirement | Check |
-> |-------------|-------|
-> | Windows OS | `ver` |
-> | Git Bash | `bash --version` |
-> | Python 3.8+ | `python --version` |
-> | Claude Code | `claude --version` |
-
-
-```bash
-cd installer
-install.bat
-```
-
-Restart Claude Code after installation. The system activates automatically.
-
-| Installed to | Contents |
-|-------------|---------|
-| `~/.claude/plugins/junior_mark/scripts/` | Hook scripts |
-| `~/.claude/settings.json` | Hook registrations |
-| `~/.claude/CLAUDE.md` | jm_rules.md registrations |
-
----
-
-## About the name
-
-Claude Junior Mark / Junior Mark / jm / foreman — all refer to the same system.
-
----
-
-## Acknowledgements
-
-The idea that Claude Code passes live `context_window` data (token count, window size, usage %) via stdin to a `statusLine` hook was discovered from [claude-context-monitor](https://github.com/fomyio/claude-context-monitor) by fomyio.
-The status bar layout, session management, foreman daemon, and handoff system are independently developed.
+## License
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.  
+<br>
