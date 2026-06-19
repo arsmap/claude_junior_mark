@@ -86,7 +86,7 @@ def get_jm_paths(d):
         "context_warn": d / "context_warn.flag", "pid": d / "foreman.pid",
         "hash": d / "foreman_hash.txt", "log": d / "foreman.log",
         "session_warn": d / "session_warn.txt",
-        "last_prompt": d / "last_prompt.txt", "usage": d / "transcript_usage.txt",
+        "last_prompt": d / "last_prompt.txt",
         "token_usage": d / "token_usage.txt",
         "ctx_window_live": d / "ctx_window_live.txt",
         "pre_retire_summary": d / "pre_retire_summary.json",

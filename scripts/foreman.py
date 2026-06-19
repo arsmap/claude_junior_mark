@@ -33,7 +33,7 @@ except Exception:
 CHECK_INTERVAL      = 5
 INACTIVITY_TIMEOUT  = 5 * 60    # auto-exit after this many seconds of inactivity
 
-# background daemon — follow JM_DATA_DIR env var or current_data_dir.txt from paths.py. no CLI args needed.
+# background daemon — resolve DATA_DIR via JM_DATA_DIR env var (paths.py get_data_dir). no CLI args needed.
 DATA_DIR = get_data_dir()
 # JM_DATA_DIR env var takes priority automatically; use P["handoff"] throughout instead of HANDOFF_FILE
 P = get_jm_paths(DATA_DIR)

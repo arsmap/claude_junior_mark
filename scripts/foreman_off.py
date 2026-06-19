@@ -58,7 +58,7 @@ def run(data_dir=None):
         result["files_deleted"].append("current_session_id.txt")
 
     # 3. clean up files (keep cc_pid — new foreman launched via start~ needs it to monitor CC in the same session)
-    for key in ["token_usage", "usage", "retire_flag"]:
+    for key in ["token_usage", "retire_flag"]:
         p = P.get(key)
         if p and p.exists():
             p.unlink(missing_ok=True)

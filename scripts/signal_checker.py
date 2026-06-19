@@ -368,6 +368,17 @@ def main():
                 if p and Path(p).exists():
                     try: Path(p).unlink(missing_ok=True)
                     except: pass
+            # restore cc_pid.txt so the new foreman runs in watch mode (not 5-min idle fallback)
+            try:
+                from session_start import find_cc_pid
+                cc_pid_val = find_cc_pid()
+                if cc_pid_val:
+                    Path(P.get("cc_pid", DATA_DIR / "cc_pid.txt")).write_text(str(cc_pid_val), encoding="utf-8")
+                    dbg(f"restart~ → cc_pid restored: {cc_pid_val} (watch mode)")
+                else:
+                    dbg("restart~ → find_cc_pid returned None (fallback mode)")
+            except Exception as e:
+                dbg(f"restart~ cc_pid restore error: {e}")
             start_msg = foreman_start(DATA_DIR)
             dbg(f"restart~ → {stop_msg} / {start_msg}")
             _ctrl_msg = f"restart~ — {stop_msg} → {start_msg}"

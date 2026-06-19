@@ -62,7 +62,6 @@ except Exception as _paths_err:
         "log":               d / "foreman.log",
         "session_warn":      d / "session_warn.txt",
         "last_prompt":       d / "last_prompt.txt",
-        "usage":             d / "transcript_usage.txt",
         "token_usage":       d / "token_usage.txt",
         "ctx_window_live":   d / "ctx_window_live.txt",
         "reset_flag":        d / "foreman_reset.flag",

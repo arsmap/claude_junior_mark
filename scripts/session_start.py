@@ -569,7 +569,7 @@ def main():
     else:
         # [new/restart] reset_flag / retire_data / crash branch
         if reset_flag.exists():
-            files_to_purge = ["context_warn", "context_threshold", "foreman_exit", "relay", "pid", "last_prompt", "session_warn", "handoff", "handoff_prev", "usage", "token_usage", "guest_session_id", "retire_flag"]
+            files_to_purge = ["context_warn", "context_threshold", "foreman_exit", "relay", "pid", "last_prompt", "session_warn", "handoff", "handoff_prev", "token_usage", "guest_session_id", "retire_flag"]
             for f_key in files_to_purge:
                 try:
                     if f_key in P: P[f_key].unlink()
