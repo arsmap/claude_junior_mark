@@ -46,6 +46,43 @@ def lookup_session(session_id):
         pass
     return None
 
+def cwd_to_slug(cwd):
+    """Convert a filesystem path to a DATA_DIR slug (drive letter kept, separators → '--')."""
+    cwd_str = str(cwd).replace('\\', '/')
+    return re.sub(r'^([A-Za-z]):', r'\1', cwd_str).replace('/', '--').lstrip('-')
+
+
+def slug_to_path(slug):
+    """Inverse of cwd_to_slug: DATA_DIR slug → Windows path string (e.g. C--Users--x → C:\\Users\\x)."""
+    return f"{slug[0]}:{slug[1:].replace('--', chr(92))}"
+
+
+def recover_data_dir_by_cc_pid(data_dir, cc_pid):
+    """If data_dir's cc_pid.txt doesn't match the live cc_pid, scan other data dirs
+    for a matching cc_pid.txt and return that one. Fallback when session_map is stale
+    or session_id is absent. Returns data_dir unchanged if no better match is found."""
+    if not cc_pid:
+        return data_dir
+    try:
+        cc_pid_file = data_dir / 'cc_pid.txt'
+        stored_cc = cc_pid_file.read_text(encoding='utf-8').strip() if cc_pid_file.exists() else ''
+        if stored_cc != str(cc_pid):
+            data_root = JM_BASE / 'data'
+            for slug_dir in data_root.iterdir():
+                if not slug_dir.is_dir() or slug_dir == data_dir:
+                    continue
+                candidate = slug_dir / 'cc_pid.txt'
+                if candidate.exists():
+                    try:
+                        if candidate.read_text(encoding='utf-8').strip() == str(cc_pid):
+                            return slug_dir
+                    except Exception:
+                        continue
+    except Exception:
+        pass
+    return data_dir
+
+
 def get_data_dir(*, forced_path=None, hook_cwd=None, session_id=None):
     # """Resolve Junior Mark data directory (unified logic)"""
     # 0. highest priority: explicitly passed path (e.g. from sys.argv)
@@ -75,9 +112,7 @@ def get_data_dir(*, forced_path=None, hook_cwd=None, session_id=None):
     blocked = cwd == CLAUDE_DIR or cwd.parts[:len(CLAUDE_DIR.parts)] == CLAUDE_DIR.parts
     if blocked: cwd = HOME
 
-    cwd_str = str(cwd).replace('\\', '/')
-    slug = re.sub(r'^([A-Za-z]):', r'\1', cwd_str).replace('/', '--').lstrip('-')
-    return JM_BASE / 'data' / slug
+    return JM_BASE / 'data' / cwd_to_slug(cwd)
 
 def get_jm_paths(d):
     """Path map for key files in the data directory"""
@@ -104,4 +139,6 @@ def get_jm_paths(d):
         "post_compact": d / "post_compact.flag",
         "cwd_restore": d / "cwd_restore.flag",
         "cwd_restored": d / "cwd_restored.flag",
+        "force_retire": d / "force_retire.flag",
+        "force_retire_mute": d / "force_retire_mute.flag",
     }

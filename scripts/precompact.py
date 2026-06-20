@@ -1,18 +1,14 @@
 #!/usr/bin/env python3
 """PreCompact hook — clear stale flags and relay log before compaction"""
 
-import io
 import json
-import os
-import re
 import sys
-import time
 from pathlib import Path
 
 # [1] load bootstrap (paths / constants / stream init)
 sys.path.insert(0, str(Path(__file__).parent))
 try:
-    from bootstrap import get_data_dir, get_jm_paths, JM_BASE, CONTEXT_TOKENS_FALLBACK, WARN, THRESHOLD
+    from bootstrap import get_data_dir, get_jm_paths
 except Exception:
     try:
         from pathlib import Path as _P; from datetime import datetime as _dt; import traceback as _tb

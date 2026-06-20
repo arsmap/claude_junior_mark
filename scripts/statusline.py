@@ -8,7 +8,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 try:
-    from bootstrap import get_data_dir, get_jm_paths, CONTEXT_TOKENS_FALLBACK, CONTEXT_WINDOW_OVERHEAD, WARN, THRESHOLD
+    from bootstrap import get_data_dir, get_jm_paths, CONTEXT_TOKENS_FALLBACK, CONTEXT_WINDOW_OVERHEAD, WARN, THRESHOLD, find_cc_pid, recover_data_dir_by_cc_pid
 except Exception:
     sys.exit(0)
 
@@ -20,7 +20,10 @@ def main():
         data = {}
 
     try:
-        DATA_DIR = get_data_dir(hook_cwd=data.get('cwd'))
+        sid = data.get('session_id', '')
+        DATA_DIR = get_data_dir(hook_cwd=data.get('cwd'), session_id=sid)
+        if not sid:  # session_id absent → session_map bypassed; recover via cc_pid (cold path, rarely taken)
+            DATA_DIR = recover_data_dir_by_cc_pid(DATA_DIR, find_cc_pid())
         P = get_jm_paths(DATA_DIR)
     except Exception:
         print("⚫ [░░░░░░░░░░░░░░░░░░░░] --% | JM")

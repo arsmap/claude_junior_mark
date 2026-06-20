@@ -1,21 +1,18 @@
 #!/usr/bin/env python3
 """UserPromptSubmit hook — log user prompt + detect and forward context_warn.flag"""
 
-import ctypes
-import io
 import json
 import os
 import re
 import subprocess
 import sys
-from ctypes import wintypes
 from datetime import datetime
 from pathlib import Path
 
 # [1] load bootstrap (paths / constants / stream init)
 sys.path.insert(0, str(Path(__file__).parent))
 try:
-    from bootstrap import get_data_dir, get_jm_paths, JM_BASE
+    from bootstrap import get_data_dir, get_jm_paths, JM_BASE, find_cc_pid, read_transcript_tokens
 except Exception:
     try:
         from pathlib import Path as _P; from datetime import datetime as _dt; import traceback as _tb
@@ -32,92 +29,6 @@ except Exception:
 
 
 
-def find_cc_pid():
-    """Walk up the process tree and return the claude process PID. Returns None if not found."""
-    try:
-        class PROCESSENTRY32(ctypes.Structure):
-            _fields_ = [
-                ("dwSize", wintypes.DWORD),
-                ("cntUsage", wintypes.DWORD),
-                ("th32ProcessID", wintypes.DWORD),
-                ("th32DefaultHeapID", ctypes.POINTER(ctypes.c_ulong)),
-                ("th32ModuleID", wintypes.DWORD),
-                ("cntThreads", wintypes.DWORD),
-                ("th32ParentProcessID", wintypes.DWORD),
-                ("pcPriClassBase", ctypes.c_long),
-                ("dwFlags", wintypes.DWORD),
-                ("szExeFile", ctypes.c_char * 260),
-            ]
-        k32 = ctypes.windll.kernel32
-        snap = k32.CreateToolhelp32Snapshot(0x00000002, 0)
-        if snap == -1: return None
-        pid_map = {}
-        try:
-            e = PROCESSENTRY32()
-            e.dwSize = ctypes.sizeof(PROCESSENTRY32)
-            if k32.Process32First(snap, ctypes.byref(e)):
-                while True:
-                    name = e.szExeFile.decode('utf-8', errors='replace').lower()
-                    pid_map[e.th32ProcessID] = (e.th32ParentProcessID, name)
-                    if not k32.Process32Next(snap, ctypes.byref(e)): break
-        finally:
-            k32.CloseHandle(snap)
-        pid = os.getpid()
-        last_orphan_pid = None
-        for _ in range(15):
-            info = pid_map.get(pid)
-            if not info: break
-            parent_pid, _ = info
-            parent_info = pid_map.get(parent_pid)
-            if not parent_info:
-                last_orphan_pid = parent_pid
-                break
-            _, parent_name = parent_info
-            if 'claude' in parent_name:
-                return parent_pid
-            pid = parent_pid
-        # fallback 1: query parent not in snapshot directly via OpenProcess
-        if last_orphan_pid:
-            try:
-                PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
-                handle = k32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, last_orphan_pid)
-                if handle:
-                    try:
-                        buf = ctypes.create_unicode_buffer(260)
-                        size = wintypes.DWORD(260)
-                        k32.QueryFullProcessImageNameW.argtypes = [
-                            wintypes.HANDLE, wintypes.DWORD,
-                            ctypes.c_wchar_p, ctypes.POINTER(wintypes.DWORD)
-                        ]
-                        k32.QueryFullProcessImageNameW.restype = wintypes.BOOL
-                        if k32.QueryFullProcessImageNameW(handle, 0, buf, ctypes.byref(size)):
-                            if 'claude' in buf.value.lower():
-                                return last_orphan_pid
-                    finally:
-                        k32.CloseHandle(handle)
-            except Exception:
-                pass
-        # fallback 2: scan entire snapshot for claude.exe
-        claude_pids = [p for p, (_, nm) in pid_map.items() if 'claude' in nm]
-        if len(claude_pids) == 1:
-            return claude_pids[0]
-        elif len(claude_pids) > 1:
-            children_count = {}
-            for _, (par, _) in pid_map.items():
-                children_count[par] = children_count.get(par, 0) + 1
-            def descendant_count(root, depth=0):
-                if depth > 6: return 0
-                total = 0
-                for p, (par, _) in pid_map.items():
-                    if par == root:
-                        total += 1 + descendant_count(p, depth + 1)
-                return total
-            return max(claude_pids, key=lambda p: descendant_count(p))
-        return None
-    except Exception:
-        return None
-
-
 RETIRE_KEYWORDS   = ["move~"]
 START_KEYWORDS    = ["start~"]
 ON_KEYWORDS       = ["on~"]
@@ -129,9 +40,6 @@ FAREWELL_KEYWORDS = ['goodbye', 'goodnight', 'seeyou', 'seeyalater', 'gottago',
 
 #DEBUG_FILE    = Path.home() / '.claude' / 'junior_mark' / 'signal_checker_debug.txt'
 DEBUG_FILE    = JM_BASE / "debug" / "signal_checker_debug.txt"
-
-_HOME          = Path.home()
-_CLAUDE_DIR    = _HOME / '.claude'
 
 
 def dbg(msg):
@@ -307,30 +215,10 @@ def main():
         except Exception:
             pass
     elif not is_guest and not _relay_empty_before and transcript_path and os.path.exists(str(transcript_path)):
-        try:
-            last_usage = None
-            with open(transcript_path, encoding='utf-8') as f:
-                for line in f:
-                    line = line.strip()
-                    if not line:
-                        continue
-                    try:
-                        d = json.loads(line)
-                        msg = d.get('message', {})
-                        if isinstance(msg, dict) and msg.get('role') == 'assistant':
-                            u = msg.get('usage')
-                            if u:
-                                last_usage = u
-                    except:
-                        pass
-            if last_usage:
-                total_tokens = (last_usage.get('input_tokens', 0) +
-                                last_usage.get('cache_read_input_tokens', 0) +
-                                last_usage.get('cache_creation_input_tokens', 0))
-                P["token_usage"].write_text(str(total_tokens), encoding='utf-8')
-                dbg(f"token usage: {total_tokens:,} tokens")
-        except Exception as e:
-            dbg(f"token read error: {e}")
+        total_tokens = read_transcript_tokens(transcript_path)
+        if total_tokens:
+            P["token_usage"].write_text(str(total_tokens), encoding='utf-8')
+            dbg(f"token usage: {total_tokens:,} tokens")
 
     # detect foreman_retire.flag — clear it so move~ can run again (allows re-retire after extra turns)
     retire_flag = P.get("retire_flag", DATA_DIR / "foreman_retire.flag")
@@ -363,6 +251,7 @@ def main():
             _ctrl_msg = f"off~ — {msg}"
         elif _ps in RESTART_KEYWORDS:
             stop_msg = foreman_stop(DATA_DIR, P)
+            # restart~ doesn't go through foreman_on.py — clear stale flags it would have cleared
             for key in ("context_warn", "context_threshold", "reset_flag", "retire_flag", "foreman_exit"):
                 p = P.get(key)
                 if p and Path(p).exists():
@@ -370,7 +259,6 @@ def main():
                     except: pass
             # restore cc_pid.txt so the new foreman runs in watch mode (not 5-min idle fallback)
             try:
-                from session_start import find_cc_pid
                 cc_pid_val = find_cc_pid()
                 if cc_pid_val:
                     Path(P.get("cc_pid", DATA_DIR / "cc_pid.txt")).write_text(str(cc_pid_val), encoding="utf-8")

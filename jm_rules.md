@@ -37,8 +37,8 @@ Do not invoke any skill, command, or tool. Immediately output only the following
 
 Computed from CWD. Do not fall back to `current_data_dir.txt`.
 
-**Calculation**: keep drive letter + replace `/` with `--` (double dash)
-Example: `C:\Users\Administrator` → `C--Users--Administrator`
+**Calculation**: strip the drive letter colon (`:`), then replace each `\` or `/` separator with `--`
+Example: `C:\Users\Administrator` → `C--Users--Administrator`, `F:\WorkSpace\foo` → `F--WorkSpace--foo`
 DATA_DIR = `~/.claude/plugins/junior_mark/data/{slug}`
 
 If the path does not exist, treat as an error (no fallback).
@@ -92,6 +92,8 @@ Exception: if `Session already ended` or `already ended` appears, skip and respo
    `{"decided": ["summary1", "summary2", ...]}`
 3. Run `python ~/.claude/plugins/junior_mark/scripts/foreman_retire.py "{DATA_DIR}"` + output exactly: `retire complete.`
 
+**Close order is safe either way.** Once `retire complete.` is printed, the handoff bundle (`retire_data.json` + snapshot) is on disk in DATA_DIR. The next session recovers it regardless of whether the old session is closed before or after the new one opens — `session_start` merges `retire_data` into `handoff_prev` even when the old session was force-closed first (a `foreman_reset.flag` no longer destroys it). No need to keep the old window open.
+
 **end~:**
 1. Confirm DATA_DIR (Rule 1-1)
 2. Run `python ~/.claude/plugins/junior_mark/scripts/foreman_off.py "{DATA_DIR}"` + output exactly: `end complete.`
@@ -114,6 +116,11 @@ Save location: see CLAUDE.md Rule 5.
 - For past content lookup → check MEMORY.md / MEMORY_MINE.md first. Only open snapshots with permission.
 - Do not auto-open snapshots without permission.
 - **Exception**: when `decided[]` is empty and `latest_snapshot` exists (auto-retire situation) → auto-read allowed (Rule 3-4 applies)
+
+## 8. Foreman Status Verification Rule
+
+- Never infer foreman status from handoff file existence. Absent `handoff.json` / `handoff_prev.json` only means no data written yet (e.g., fresh session or post-reset) — it says nothing about whether the foreman is running.
+- To check actual foreman status: read the most recent `⎿ UserPromptSubmit says:` status bar output visible in the conversation. Never state "foreman is not running" or similar without reading the actual status bar or checking the pid file.
 
 ## 7. 'handoff check' Display Format
 

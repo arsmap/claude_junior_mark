@@ -13,7 +13,7 @@ from pathlib import Path
 # [1] load bootstrap (paths / constants / stream init)
 sys.path.insert(0, str(Path(__file__).parent))
 try:
-    from bootstrap import get_data_dir, get_jm_paths, JM_BASE, CONTEXT_TOKENS_FALLBACK, CONTEXT_WINDOW_OVERHEAD, TURN_THRESHOLD, register_session
+    from bootstrap import get_data_dir, get_jm_paths, JM_BASE, TURN_THRESHOLD, register_session, find_cc_pid, read_eff_window, read_transcript_tokens, recover_data_dir_by_cc_pid
 except Exception:
     try:
         from pathlib import Path as _P; from datetime import datetime as _dt; import traceback as _tb
@@ -34,42 +34,12 @@ NICKNAME       = os.environ.get('DODAM_NICKNAME', '') or SYSTEM_NAME
 
 
 def read_token_pct_from_transcript(transcript_path_str):
-    """Read token usage from the last entry in the transcript JSONL and return as %"""
-    if not transcript_path_str:
+    """Read token usage from the last assistant message in the transcript JSONL and return as %"""
+    last_tokens = read_transcript_tokens(transcript_path_str)
+    if not last_tokens:
         return 0
-    try:
-        p = Path(transcript_path_str)
-        if not p.exists():
-            return 0
-        last_tokens = 0
-        with open(p, 'r', encoding='utf-8') as f:
-            for line in f:
-                try:
-                    entry = json.loads(line.strip())
-                    # usage is nested inside message.usage, not at the top level (same parsing as signal_checker)
-                    msg = entry.get('message', {})
-                    usage = msg.get('usage', {}) if isinstance(msg, dict) else {}
-                    if usage:
-                        tokens = (usage.get('input_tokens', 0) +
-                                  usage.get('cache_read_input_tokens', 0) +
-                                  usage.get('cache_creation_input_tokens', 0))
-                        if tokens > 0:
-                            last_tokens = tokens
-                except Exception:
-                    continue
-        try:
-            # prefer the live window size statusline.py recorded from CC stdin (SessionStart has no direct access to it)
-            live_file = P.get("ctx_window_live") or DATA_DIR / "ctx_window_live.txt"
-            eff_window = max(int(Path(live_file).read_text(encoding='utf-8').strip()) - CONTEXT_WINDOW_OVERHEAD, 1)
-        except Exception:
-            try:
-                cj = json.loads((Path.home() / '.claude.json').read_text(encoding='utf-8'))
-                eff_window = max(int(cj.get('cachedGrowthBookFeatures', {}).get('tengu_hawthorn_window', CONTEXT_TOKENS_FALLBACK)) - CONTEXT_WINDOW_OVERHEAD, 1)
-            except Exception:
-                eff_window = CONTEXT_TOKENS_FALLBACK - CONTEXT_WINDOW_OVERHEAD
-        return min(round(last_tokens / eff_window * 100), 999) if last_tokens else 0
-    except Exception:
-        return 0
+    eff_window = read_eff_window(P, DATA_DIR)
+    return min(round(last_tokens / eff_window * 100), 999)
 
 SCRIPTS_DIR = Path(__file__).parent
 
@@ -82,105 +52,6 @@ def _file_hash(p):
         return hashlib.md5(p.read_bytes()).hexdigest()
     except Exception:
         return ''
-
-
-def find_cc_pid():
-    """Walk the process tree upward and return the PID of the claude process. Returns None if not found."""
-    try:
-        import ctypes
-        from ctypes import wintypes
-
-        class PROCESSENTRY32(ctypes.Structure):
-            _fields_ = [
-                ("dwSize", wintypes.DWORD),
-                ("cntUsage", wintypes.DWORD),
-                ("th32ProcessID", wintypes.DWORD),
-                ("th32DefaultHeapID", ctypes.POINTER(ctypes.c_ulong)),
-                ("th32ModuleID", wintypes.DWORD),
-                ("cntThreads", wintypes.DWORD),
-                ("th32ParentProcessID", wintypes.DWORD),
-                ("pcPriClassBase", ctypes.c_long),
-                ("dwFlags", wintypes.DWORD),
-                ("szExeFile", ctypes.c_char * 260),
-            ]
-
-        k32 = ctypes.windll.kernel32
-        snap = k32.CreateToolhelp32Snapshot(0x00000002, 0)
-        if snap == -1: return None
-
-        pid_map = {}
-        try:
-            e = PROCESSENTRY32()
-            e.dwSize = ctypes.sizeof(PROCESSENTRY32)
-            if k32.Process32First(snap, ctypes.byref(e)):
-                while True:
-                    name = e.szExeFile.decode('utf-8', errors='replace').lower()
-                    pid_map[e.th32ProcessID] = (e.th32ParentProcessID, name)
-                    if not k32.Process32Next(snap, ctypes.byref(e)): break
-        finally:
-            k32.CloseHandle(snap)
-
-        pid = os.getpid()
-        last_orphan_pid = None
-        for _ in range(15):
-            info = pid_map.get(pid)
-            if not info: break
-            parent_pid, _ = info
-            parent_info = pid_map.get(parent_pid)
-            if not parent_info:
-                last_orphan_pid = parent_pid  # remember parent PID missing from snapshot
-                break
-            _, parent_name = parent_info
-            if 'claude' in parent_name:
-                return parent_pid
-            pid = parent_pid
-
-        # fallback 1: query the missing parent directly via OpenProcess
-        # (handles cases where the hook's bash parent is absent from the snapshot due to MSYS2/Cygwin layer)
-        if last_orphan_pid:
-            try:
-                PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
-                handle = k32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, last_orphan_pid)
-                if handle:
-                    try:
-                        buf = ctypes.create_unicode_buffer(260)
-                        size = wintypes.DWORD(260)
-                        k32.QueryFullProcessImageNameW.argtypes = [
-                            wintypes.HANDLE, wintypes.DWORD,
-                            ctypes.c_wchar_p, ctypes.POINTER(wintypes.DWORD)
-                        ]
-                        k32.QueryFullProcessImageNameW.restype = wintypes.BOOL
-                        if k32.QueryFullProcessImageNameW(handle, 0, buf, ctypes.byref(size)):
-                            if 'claude' in buf.value.lower():
-                                return last_orphan_pid
-                    finally:
-                        k32.CloseHandle(handle)
-            except Exception:
-                pass
-
-        # fallback 2: scan all claude.exe entries in the snapshot
-        # used when ancestor traversal breaks due to MSYS2 PID remapping
-        claude_pids = [p for p, (_, nm) in pid_map.items() if 'claude' in nm]
-        if len(claude_pids) == 1:
-            return claude_pids[0]
-        elif len(claude_pids) > 1:
-            # pick the claude.exe with the most child processes
-            # (the main session has more children due to hook execution)
-            children_count = {}
-            for _, (par, _) in pid_map.items():
-                children_count[par] = children_count.get(par, 0) + 1
-            def descendant_count(root, depth=0):
-                if depth > 6: return 0
-                total = 0
-                for p, (par, _) in pid_map.items():
-                    if par == root:
-                        total += 1 + descendant_count(p, depth + 1)
-                return total
-            return max(claude_pids, key=lambda p: descendant_count(p))
-
-        return None
-    except Exception:
-        return None
 
 
 def is_foreman_stale():
@@ -286,26 +157,7 @@ def main():
     DATA_DIR = get_data_dir(hook_cwd=data.get('cwd'), session_id=session_id)
 
     # validate DATA_DIR by scanning cc_pid.txt — fallback when session_map is stale
-    try:
-        cc_pid_val = find_cc_pid()
-        if cc_pid_val:
-            cc_pid_file = DATA_DIR / 'cc_pid.txt'
-            stored_cc = cc_pid_file.read_text(encoding='utf-8').strip() if cc_pid_file.exists() else ''
-            if stored_cc != str(cc_pid_val):
-                data_root = JM_BASE / 'data'
-                for slug_dir in data_root.iterdir():
-                    if not slug_dir.is_dir() or slug_dir == DATA_DIR:
-                        continue
-                    candidate = slug_dir / 'cc_pid.txt'
-                    if candidate.exists():
-                        try:
-                            if candidate.read_text(encoding='utf-8').strip() == str(cc_pid_val):
-                                DATA_DIR = slug_dir
-                                break
-                        except Exception:
-                            continue
-    except Exception:
-        pass
+    DATA_DIR = recover_data_dir_by_cc_pid(DATA_DIR, find_cc_pid())
 
     P = get_jm_paths(DATA_DIR)
     DATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -567,19 +419,12 @@ def main():
         foreman_status = "✓" if is_foreman_alive() else "✗"
 
     else:
-        # [new/restart] reset_flag / retire_data / crash branch
-        if reset_flag.exists():
-            files_to_purge = ["context_warn", "context_threshold", "foreman_exit", "relay", "pid", "last_prompt", "session_warn", "handoff", "handoff_prev", "token_usage", "guest_session_id", "retire_flag"]
-            for f_key in files_to_purge:
-                try:
-                    if f_key in P: P[f_key].unlink()
-                except FileNotFoundError: pass
-            try: reset_flag.unlink()
-            except: pass
-            try: retire_data_file.unlink()
-            except FileNotFoundError: pass
-
-        elif retire_data_file.exists():
+        # [new/restart] retire_data / reset_flag / crash branch
+        # retire_data is checked FIRST: if move~ happened, preserve & merge the handoff
+        # even when reset_flag is also present (old session force-closed after move~).
+        # [fix] prevents the "closed old session first → handoff lost" disaster — the
+        # reset_flag purge below must not destroy retire_data before it's merged.
+        if retire_data_file.exists():
             try:
                 rd = json.loads(retire_data_file.read_text(encoding='utf-8'))
                 if P["handoff"].exists():
@@ -598,11 +443,24 @@ def main():
             except FileNotFoundError: pass
             try: retire_data_file.unlink()
             except FileNotFoundError: pass
+            try: reset_flag.unlink()  # clear co-existing force-close flag (move~ then closed)
+            except FileNotFoundError: pass
             (DATA_DIR / "retire_claim.lock").unlink(missing_ok=True)
             for f_key in ["context_warn", "context_threshold", "foreman_exit", "last_prompt", "session_warn", "token_usage", "retire_flag"]:
                 try:
                     if f_key in P: P[f_key].unlink()
                 except FileNotFoundError: pass
+
+        elif reset_flag.exists():
+            files_to_purge = ["context_warn", "context_threshold", "foreman_exit", "relay", "pid", "last_prompt", "session_warn", "handoff", "handoff_prev", "token_usage", "guest_session_id", "retire_flag"]
+            for f_key in files_to_purge:
+                try:
+                    if f_key in P: P[f_key].unlink()
+                except FileNotFoundError: pass
+            try: reset_flag.unlink()
+            except: pass
+            try: retire_data_file.unlink()
+            except FileNotFoundError: pass
 
         else:
             # foreman crash / timeout
@@ -642,16 +500,7 @@ def main():
         foreman_status = "✓" if is_foreman_alive() else "✗"
 
     # 4-2. write session start token count — must come after branch cleanup (branches delete token_usage)
-    try:
-        # prefer the live window size statusline.py recorded from CC stdin (SessionStart has no direct access to it)
-        live_file = P.get("ctx_window_live") or DATA_DIR / "ctx_window_live.txt"
-        eff_window = max(int(Path(live_file).read_text(encoding='utf-8').strip()) - CONTEXT_WINDOW_OVERHEAD, 1)
-    except Exception:
-        try:
-            cj = json.loads((Path.home() / '.claude.json').read_text(encoding='utf-8'))
-            eff_window = max(int(cj.get('cachedGrowthBookFeatures', {}).get('tengu_hawthorn_window', CONTEXT_TOKENS_FALLBACK)) - CONTEXT_WINDOW_OVERHEAD, 1)
-        except Exception:
-            eff_window = CONTEXT_TOKENS_FALLBACK - CONTEXT_WINDOW_OVERHEAD
+    eff_window = read_eff_window(P, DATA_DIR)
     if start_token_pct > 0:
         try:
             token_count = round(start_token_pct * eff_window / 100)

@@ -6,13 +6,12 @@ import json
 import os
 import subprocess
 import sys
-import time
 from pathlib import Path
 
 # [1] load bootstrap (paths / constants / stream init)
 sys.path.insert(0, str(Path(__file__).parent))
 try:
-    from bootstrap import get_data_dir, get_jm_paths, JM_BASE, CONTEXT_TOKENS_FALLBACK, WARN, THRESHOLD
+    from bootstrap import get_data_dir, get_jm_paths, read_transcript_tokens
 except Exception:
     try:
         from pathlib import Path as _P; from datetime import datetime as _dt; import traceback as _tb
@@ -47,37 +46,8 @@ def _session_id_from_relay(relay_file):
         return None
 
 
-def _read_tokens(transcript_path):
-    """Read last assistant usage from transcript JSONL → total token count"""
-    if not transcript_path or not Path(transcript_path).exists():
-        return None
-    try:
-        last_usage = None
-        with open(transcript_path, encoding='utf-8') as f:
-            for line in f:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    d = json.loads(line)
-                    msg = d.get('message', {})
-                    if isinstance(msg, dict) and msg.get('role') == 'assistant':
-                        u = msg.get('usage')
-                        if u:
-                            last_usage = u
-                except Exception:
-                    pass
-        if last_usage:
-            return (last_usage.get('input_tokens', 0) +
-                    last_usage.get('cache_read_input_tokens', 0) +
-                    last_usage.get('cache_creation_input_tokens', 0))
-    except Exception:
-        pass
-    return None
-
-
 def run(data_dir=None, session_id=None, transcript_path=None, cc_pid=None):
-    DATA_DIR = Path(data_dir) if data_dir else get_data_dir()
+    DATA_DIR = get_data_dir(forced_path=data_dir) if data_dir else get_data_dir()
     P = get_jm_paths(DATA_DIR)
     DATA_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -113,8 +83,8 @@ def run(data_dir=None, session_id=None, transcript_path=None, cc_pid=None):
         result["claimed"] = True
 
     # 3. record token usage
-    tokens = _read_tokens(transcript_path)
-    if tokens is not None:
+    tokens = read_transcript_tokens(transcript_path)
+    if tokens:
         P["token_usage"].write_text(str(tokens), encoding='utf-8')
 
     # 4. stop existing foreman

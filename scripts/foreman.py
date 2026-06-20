@@ -4,7 +4,6 @@
 import hashlib
 import json
 import os
-import re
 import sys
 import time
 from datetime import datetime
@@ -13,7 +12,7 @@ from pathlib import Path
 # [1] load bootstrap (paths / constants / stream init)
 sys.path.insert(0, str(Path(__file__).parent))
 try:
-    from bootstrap import get_data_dir, get_jm_paths, JM_BASE, CONTEXT_TOKENS_FALLBACK, CONTEXT_WINDOW_OVERHEAD, WARN, THRESHOLD, TURN_THRESHOLD, CHAR_THRESHOLD, register_session, lookup_session
+    from bootstrap import get_data_dir, get_jm_paths, WARN, THRESHOLD, register_session, lookup_session, compute_handoff_metrics, build_handoff, cwd_to_slug, slug_to_path
 except Exception:
     try:
         from pathlib import Path as _P; from datetime import datetime as _dt; import traceback as _tb
@@ -29,11 +28,11 @@ except Exception:
     raise
 
 
-# [2] settings and threshold definitions (TURN/CHAR_THRESHOLD are shared bootstrap constants)
+# [2] daemon settings
 CHECK_INTERVAL      = 5
 INACTIVITY_TIMEOUT  = 5 * 60    # auto-exit after this many seconds of inactivity
 
-# background daemon — resolve DATA_DIR via JM_DATA_DIR env var (paths.py get_data_dir). no CLI args needed.
+# background daemon — follow JM_DATA_DIR env var or current_data_dir.txt from paths.py. no CLI args needed.
 DATA_DIR = get_data_dir()
 # JM_DATA_DIR env var takes priority automatically; use P["handoff"] throughout instead of HANDOFF_FILE
 P = get_jm_paths(DATA_DIR)
@@ -87,71 +86,17 @@ def read_relay():
     return entries
 
 
-def read_token_usage():
-    try:
-        f = P.get("token_usage") or DATA_DIR / "token_usage.txt"
-        if Path(f).exists():
-            return int(Path(f).read_text(encoding='utf-8').strip())
-    except Exception: pass
-    return 0
-
-
 def compute_metrics(entries):
-    total_turns = sum(1 for e in entries if e.get("role") == "assistant")
-    total_chars = sum(e.get("chars", 0) for e in entries)
-    turn_pct    = min(round(total_turns / TURN_THRESHOLD * 100), 999)
-    char_pct    = min(round(total_chars / CHAR_THRESHOLD * 100), 999)
-
-    context_tokens = read_token_usage()
-    try:
-        # prefer the live window size statusline.py recorded from CC stdin (foreman has no direct access to it)
-        live_file = P.get("ctx_window_live") or DATA_DIR / "ctx_window_live.txt"
-        context_window = int(Path(live_file).read_text(encoding='utf-8').strip())
-    except Exception:
-        try:
-            claude_json = json.loads((Path.home() / '.claude.json').read_text(encoding='utf-8'))
-            context_window = int(claude_json.get('cachedGrowthBookFeatures', {}).get('tengu_hawthorn_window', CONTEXT_TOKENS_FALLBACK))
-        except Exception:
-            context_window = CONTEXT_TOKENS_FALLBACK
-    context_window = max(context_window - CONTEXT_WINDOW_OVERHEAD, 1)
-    token_pct = min(round(context_tokens / context_window * 100), 999) if context_tokens > 0 else 0
-
-    return {
-        "total_turns":    total_turns,
-        "total_chars":    total_chars,
-        "turn_pct":       turn_pct,
-        "char_pct":       char_pct,
-        "context_tokens": context_tokens,
-        "token_pct":      token_pct,
-    }
+    return compute_handoff_metrics(entries, P, DATA_DIR)
 
 
 def write_handoff(entries, metrics):
-    recent = [{"role": e["role"], "text": e.get("text", "")[:80]} for e in entries[-6:]]
     last_prompt = ""
     try:
         if P["last_prompt"].exists():
-            last_prompt = P["last_prompt"].read_text(encoding="utf-8").strip()[:200]
+            last_prompt = P["last_prompt"].read_text(encoding="utf-8").strip()
     except: pass
-
-    pct = metrics.get("token_pct", 0)
-    handoff = {
-        "metrics": metrics,
-        "relationship": {"mood": "focused", "recent_jokes": []},
-        "work": {
-            "project": DATA_DIR.name,
-            "status":  f"{metrics['total_turns']} turns / {metrics['total_chars']:,} chars",
-            "decided": [],
-            "pending": [],
-        },
-        "recent_turns": recent,
-        "handoff_message": (
-            f"Context {pct}% reached — new session recommended. (last: {last_prompt[:30]}...)"
-            if pct >= WARN else
-            (f"{metrics['total_turns']} turns in progress ({pct}%, last: {last_prompt[:30]}...)"
-             if last_prompt else f"{metrics['total_turns']} turns in progress ({pct}%)")
-        ),
-    }
+    handoff = build_handoff(DATA_DIR, metrics, entries, last_prompt)
     atomic_write(P["handoff"], json.dumps(handoff, ensure_ascii=False, indent=2))
 
 
@@ -284,11 +229,8 @@ def main():
                     cwd_restore_file = P.get("cwd_restore", DATA_DIR / "cwd_restore.flag")
                     cwd_restored_file = P.get("cwd_restored", DATA_DIR / "cwd_restored.flag")
                     if latest_cwd and latest_sid:
-                        cwd_str = str(latest_cwd).replace('\\', '/')
-                        cwd_slug = re.sub(r'^([A-Za-z]):', r'\1', cwd_str).replace('/', '--').lstrip('-')
-                        correct_drive = DATA_DIR.name[0]
-                        correct_rest = DATA_DIR.name[1:].replace('--', '\\')
-                        correct_path = f"{correct_drive}:{correct_rest}"
+                        cwd_slug = cwd_to_slug(latest_cwd)
+                        correct_path = slug_to_path(DATA_DIR.name)
                         if cwd_slug != DATA_DIR.name:
                             current_mapping = lookup_session(latest_sid)
                             if current_mapping != DATA_DIR:

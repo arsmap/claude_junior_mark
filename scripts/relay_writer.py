@@ -1,10 +1,8 @@
 #!/usr/bin/env python3
 """Stop hook — log assistant response to relay + update handoff.json"""
 
-import io
 import json
 import os
-import re
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -12,7 +10,7 @@ from pathlib import Path
 # [1] load bootstrap (paths / constants / stream init)
 sys.path.insert(0, str(Path(__file__).parent))
 try:
-    from bootstrap import get_data_dir, get_jm_paths, JM_BASE, CONTEXT_TOKENS_FALLBACK, CONTEXT_WINDOW_OVERHEAD, WARN, THRESHOLD, TURN_THRESHOLD, CHAR_THRESHOLD
+    from bootstrap import get_data_dir, get_jm_paths, JM_BASE, read_transcript_tokens, compute_handoff_metrics, build_handoff
 except Exception:
     try:
         from pathlib import Path as _P; from datetime import datetime as _dt; import traceback as _tb
@@ -88,71 +86,18 @@ def read_relay(relay_file):
 # [7] update handoff and metrics (takes path map P as argument)
 def update_handoff(DATA_DIR, P, last_prompt_file):
     entries = read_relay(P["relay"])
-    total_turns = sum(1 for e in entries if e.get("role") == "assistant")
-    total_chars = sum(e.get("chars", 0) for e in entries)
-    turn_pct    = min(round(total_turns / TURN_THRESHOLD * 100), 999)
-    char_pct    = min(round(total_chars / CHAR_THRESHOLD * 100), 999)
-
-    context_tokens = 0
-    try:
-        token_file = P.get("token_usage") or DATA_DIR / "token_usage.txt"
-        if Path(token_file).exists():
-            context_tokens = int(Path(token_file).read_text(encoding='utf-8').strip())
-    except Exception: pass
-    context_window = CONTEXT_TOKENS_FALLBACK
-    try:
-        # prefer the live window size statusline.py recorded from CC stdin (Stop hook has no direct access to it)
-        live_file = P.get("ctx_window_live") or DATA_DIR / "ctx_window_live.txt"
-        context_window = int(Path(live_file).read_text(encoding='utf-8').strip())
-    except Exception:
-        try:
-            claude_json = json.loads((Path.home() / '.claude.json').read_text(encoding='utf-8'))
-            context_window = int(claude_json.get('cachedGrowthBookFeatures', {}).get('tengu_hawthorn_window', CONTEXT_TOKENS_FALLBACK))
-        except Exception:
-            pass
-    context_window = max(context_window - CONTEXT_WINDOW_OVERHEAD, 1)
-    token_pct = min(round(context_tokens / context_window * 100), 999) if context_tokens > 0 else 0
-
-    pct = token_pct
-
-    recent = [
-        {"role": e["role"], "text": e.get("text", "")[:80]}
-        for e in entries[-6:]
-    ]
+    metrics = compute_handoff_metrics(entries, P, DATA_DIR)
 
     last_prompt = ""
     try:
         if last_prompt_file.exists():
-            last_prompt = last_prompt_file.read_text(encoding="utf-8").strip()[:30]
+            last_prompt = last_prompt_file.read_text(encoding="utf-8").strip()
     except: pass
 
-    handoff = {
-        "metrics": {
-            "total_turns":    total_turns,
-            "total_chars":    total_chars,
-            "turn_pct":       turn_pct,
-            "char_pct":       char_pct,
-            "context_tokens": context_tokens,
-            "token_pct":      token_pct,
-        },
-        "relationship": {"mood": "focused", "recent_jokes": []},
-        "work": {
-            "project": DATA_DIR.name,
-            "status":  f"{total_turns} turns / {total_chars:,} chars",
-            "decided": [],
-            "pending": [],
-        },
-        "recent_turns":    recent,
-        "handoff_message": (
-            f"Context {pct}% reached — consider starting a new session."
-            if pct >= WARN else
-                f"{total_turns} turns in progress ({pct}%)"
-        ),
-    }
-
+    handoff = build_handoff(DATA_DIR, metrics, entries, last_prompt)
     atomic_write(P["handoff"], json.dumps(handoff, ensure_ascii=False, indent=2))
 
-    return total_turns
+    return metrics["total_turns"]
 
 
 def main():
@@ -203,30 +148,10 @@ def main():
         # updating at Stop hook reduces delay to 1 turn (foreman detects within 5-second poll)
         transcript_path = data.get('transcript_path')
         if transcript_path and os.path.exists(str(transcript_path)):
-            try:
-                last_usage = None
-                with open(transcript_path, encoding='utf-8') as f:
-                    for line in f:
-                        line = line.strip()
-                        if not line:
-                            continue
-                        try:
-                            d = json.loads(line)
-                            msg = d.get('message', {})
-                            if isinstance(msg, dict) and msg.get('role') == 'assistant':
-                                u = msg.get('usage')
-                                if u:
-                                    last_usage = u
-                        except Exception:
-                            pass
-                if last_usage:
-                    total_tokens = (last_usage.get('input_tokens', 0) +
-                                    last_usage.get('cache_read_input_tokens', 0) +
-                                    last_usage.get('cache_creation_input_tokens', 0))
-                    P["token_usage"].write_text(str(total_tokens), encoding='utf-8')
-                    dbg(f"Stop hook token_usage updated: {total_tokens:,}")
-            except Exception as e:
-                dbg(f"Stop hook token_usage update error: {e}")
+            total_tokens = read_transcript_tokens(transcript_path)
+            if total_tokens:
+                P["token_usage"].write_text(str(total_tokens), encoding='utf-8')
+                dbg(f"Stop hook token_usage updated: {total_tokens:,}")
 
         # update handoff and signal
         turns = update_handoff(DATA_DIR, P, P["last_prompt"])
