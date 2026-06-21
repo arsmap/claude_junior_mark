@@ -129,10 +129,10 @@ def main():
             dot = "⚫"  # mid-session foreman death — show last known values
     filled = max(0, min(20, round(pct / 100 * 20)))
     bar = "█" * filled + "░" * (20 - filled)
-    k_tok = f"{tokens // 1000}K" if tokens >= 1000 else str(tokens)
+    k_tok = str(tokens // 1000) if tokens >= 1000 else str(tokens)
     k_win = f"{ctx_window // 1000}K"
 
-    print(f"{dot} [{bar}] {pct}% | {k_tok.rstrip('K')}/{k_win} | {turns}/30T | PID:{foreman_pid_str}")
+    print(f"{dot} [{bar}] {pct}% | {k_tok}/{k_win} | {turns}/30T | PID:{foreman_pid_str}")
     sys.stdout.flush()
 
 

@@ -29,10 +29,6 @@ except Exception:
     raise
 
 
-SYSTEM_NAME    = os.environ.get('DODAM_SYSTEM_NAME', '')
-NICKNAME       = os.environ.get('DODAM_NICKNAME', '') or SYSTEM_NAME
-
-
 def read_token_pct_from_transcript(transcript_path_str):
     """Read token usage from the last assistant message in the transcript JSONL and return as %"""
     last_tokens = read_transcript_tokens(transcript_path_str)
@@ -42,9 +38,6 @@ def read_token_pct_from_transcript(transcript_path_str):
     return min(round(last_tokens / eff_window * 100), 999)
 
 SCRIPTS_DIR = Path(__file__).parent
-
-# 
-DETACHED = subprocess.DETACHED_PROCESS | 0x08000000  # CREATE_NO_WINDOW
 
 
 def _file_hash(p):
@@ -109,15 +102,6 @@ def log_to_foreman(msg):
         pass        
 
     
-def load_handoff():
-    if not P["handoff"].exists(): return None
-    try:
-        data = json.loads(P["handoff"].read_text(encoding="utf-8"))
-        return data if isinstance(data, dict) else None
-    except (json.JSONDecodeError, Exception): # guard against corrupted JSON
-        return None    
-
-
 def ensure_foreman():
     if is_foreman_alive(): return "✓"
     

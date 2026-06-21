@@ -118,10 +118,13 @@ def main():
 
     # stale session check — skip relay.jsonl write if session_id differs
     if my_session_id and P.get('session_id') and P['session_id'].exists():
-        current_id = P['session_id'].read_text(encoding='utf-8').strip()
-        if current_id and my_session_id != current_id:
-            dbg(f"stale session detected — skipping relay write ({my_session_id[:8]})")
-            return
+        try:
+            current_id = P['session_id'].read_text(encoding='utf-8').strip()
+            if current_id and my_session_id != current_id:
+                dbg(f"stale session detected — skipping relay write ({my_session_id[:8]})")
+                return
+        except Exception as e:
+            dbg(f"session_id check error: {e}")
 
     entry = {
         "role": "assistant",

@@ -62,7 +62,7 @@ def foreman_start(DATA_DIR):
             env=env,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
-            creationflags=0x08000000
+            creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
         )
         dbg(f"foreman_start: pid={proc.pid}")
         return f"✅ foreman started (PID={proc.pid})"
@@ -331,7 +331,7 @@ def main():
             foreman_on_py = Path(__file__).parent / 'foreman_on.py'
             _cc_pid = find_cc_pid()
             result = subprocess.run(
-                ["python", str(foreman_on_py), str(DATA_DIR),
+                [sys.executable, str(foreman_on_py), str(DATA_DIR),
                  data.get('session_id', ''), str(data.get('transcript_path', '') or ''),
                  str(_cc_pid) if _cc_pid else ''],
                 capture_output=True, text=True, encoding='utf-8', timeout=10

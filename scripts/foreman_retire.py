@@ -1,10 +1,7 @@
 #!/usr/bin/env python3
 """foreman_retire.py — session retire: write session_warn + create snapshot + print completion message"""
 
-import io
 import json
-import os
-import re
 import subprocess
 import sys
 from datetime import datetime
@@ -13,7 +10,7 @@ from pathlib import Path
 # [1] load bootstrap (paths / constants / stream init)
 sys.path.insert(0, str(Path(__file__).parent))
 try:
-    from bootstrap import get_data_dir, get_jm_paths, JM_BASE, CONTEXT_TOKENS_FALLBACK, CONTEXT_WINDOW_OVERHEAD, WARN, THRESHOLD, TURN_THRESHOLD, CHAR_THRESHOLD
+    from bootstrap import get_data_dir, get_jm_paths, CONTEXT_TOKENS_FALLBACK, CONTEXT_WINDOW_OVERHEAD, TURN_THRESHOLD, CHAR_THRESHOLD
 except Exception:
     try:
         from pathlib import Path as _P; from datetime import datetime as _dt; import traceback as _tb

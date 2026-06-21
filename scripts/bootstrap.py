@@ -15,7 +15,7 @@ from pathlib import Path
 
 # ── system constants ─────────────────────────────────────────────
 # context window fallback (used when live token limit is unavailable). measured baseline: 200K.
-# effective CC limit ≈ 178K (200K minus ~22K overhead).
+# effective CC limit ≈ 170K (200K minus 30K overhead = CONTEXT_WINDOW_OVERHEAD).
 # prior bug (167K fallback) reproduced: WARN=87%×167K≈145K, THRESHOLD=97%×167K≈162K
 # → converted to 200K basis: 145K/200K=72%, 162K/200K=81%
 CONTEXT_TOKENS_FALLBACK = 200_000
@@ -54,9 +54,12 @@ except Exception as _paths_err:
     def register_session(sid, data_dir): pass
     def lookup_session(sid): return None
     import re as _re
-    def cwd_to_slug(cwd): return _re.sub(r'^([A-Za-z]):', r'\1', str(cwd).replace('\\', '/')).replace('/', '--').lstrip('-')
+    def cwd_to_slug(cwd):
+        _s = _re.sub(r'^([A-Za-z]):', lambda m: m.group(1).upper(), str(cwd).replace('\\', '/'))
+        _s = _re.sub(r'^/([A-Za-z])/', lambda m: m.group(1).upper() + '/', _s)
+        return _s.replace('/', '--').lstrip('-')
     def slug_to_path(slug): return f"{slug[0]}:{slug[1:].replace('--', chr(92))}"
-    def recover_data_dir_by_cc_pid(data_dir, cc_pid): return data_dir
+    def recover_data_dir_by_cc_pid(data_dir, cc_pid): return data_dir  # fallback: no recovery (cc_pid ignored)
     def get_jm_paths(d): return {
         "relay":             d / "relay.jsonl",
         "handoff":           d / "handoff.json",

@@ -47,9 +47,13 @@ def lookup_session(session_id):
     return None
 
 def cwd_to_slug(cwd):
-    """Convert a filesystem path to a DATA_DIR slug (drive letter kept, separators → '--')."""
+    """Convert a filesystem path to a DATA_DIR slug (separators → '--').
+    Drive letter is normalized to uppercase so Windows ('F:\\..') and bash/MSYS2 ('/f/..')
+    forms of the same folder map to the same slug (prevents split-brain DATA_DIR)."""
     cwd_str = str(cwd).replace('\\', '/')
-    return re.sub(r'^([A-Za-z]):', r'\1', cwd_str).replace('/', '--').lstrip('-')
+    cwd_str = re.sub(r'^([A-Za-z]):', lambda m: m.group(1).upper(), cwd_str)        # F:/.. -> F/..
+    cwd_str = re.sub(r'^/([A-Za-z])/', lambda m: m.group(1).upper() + '/', cwd_str)  # /f/.. -> F/..
+    return cwd_str.replace('/', '--').lstrip('-')
 
 
 def slug_to_path(slug):
