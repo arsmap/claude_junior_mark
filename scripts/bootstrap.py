@@ -20,7 +20,8 @@ from pathlib import Path
 # → converted to 200K basis: 145K/200K=72%, 162K/200K=81%
 CONTEXT_TOKENS_FALLBACK = 200_000
 CONTEXT_WINDOW_OVERHEAD = 30_000  # CC compact triggers at ~170K effective window
-TURN_THRESHOLD = 30
+TURN_THRESHOLD_BASE = 30          # turns budget per 200K-token window (scales with the live context window)
+TURN_BASE_WINDOW    = 200_000     # reference raw window the base is calibrated to
 CHAR_THRESHOLD = 50_000
 WARN      = 82   # 164K tokens → CC ~10% remaining
 THRESHOLD = 92   # 184K tokens → CC  ~0% remaining
@@ -218,6 +219,15 @@ def read_eff_window(P=None, DATA_DIR=None):
     return max(raw - CONTEXT_WINDOW_OVERHEAD, 1)
 
 
+# ── turn-count threshold scaled to the context window, shared ─────
+def turn_threshold(eff_window):
+    """Turn-count threshold scaled to the raw context window (200K→30, 1M→150).
+    Recovers raw = eff_window + overhead, then TURN_THRESHOLD_BASE turns per 200K window.
+    Keys off the actual window size (no magic boundary)."""
+    raw = eff_window + CONTEXT_WINDOW_OVERHEAD
+    return max(round(raw / TURN_BASE_WINDOW * TURN_THRESHOLD_BASE), 1)
+
+
 # ── sum tokens from last assistant message in transcript JSONL, shared ─────
 def read_transcript_tokens(transcript_path):
     """Sum input + cache_read + cache_creation tokens from the last assistant
@@ -265,10 +275,10 @@ def compute_handoff_metrics(entries, P=None, DATA_DIR=None):
     """Compute turn/char/token metrics from relay entries + persisted token_usage."""
     total_turns = sum(1 for e in entries if e.get("role") == "assistant")
     total_chars = sum(e.get("chars", 0) for e in entries)
-    turn_pct    = min(round(total_turns / TURN_THRESHOLD * 100), 999)
-    char_pct    = min(round(total_chars / CHAR_THRESHOLD * 100), 999)
     context_tokens = read_token_usage(P, DATA_DIR)
     context_window = read_eff_window(P, DATA_DIR)
+    turn_pct    = min(round(total_turns / turn_threshold(context_window) * 100), 999)
+    char_pct    = min(round(total_chars / CHAR_THRESHOLD * 100), 999)
     token_pct = min(round(context_tokens / context_window * 100), 999) if context_tokens > 0 else 0
     return {
         "total_turns":    total_turns,

@@ -13,7 +13,7 @@ from pathlib import Path
 # [1] load bootstrap (paths / constants / stream init)
 sys.path.insert(0, str(Path(__file__).parent))
 try:
-    from bootstrap import get_data_dir, get_jm_paths, JM_BASE, TURN_THRESHOLD, register_session, find_cc_pid, read_eff_window, read_transcript_tokens, recover_data_dir_by_cc_pid
+    from bootstrap import get_data_dir, get_jm_paths, JM_BASE, turn_threshold, register_session, find_cc_pid, read_eff_window, read_transcript_tokens, recover_data_dir_by_cc_pid
 except Exception:
     try:
         from pathlib import Path as _P; from datetime import datetime as _dt; import traceback as _tb
@@ -557,7 +557,7 @@ def main():
     is_new = hp_data is None
 
     line1 = f"[Junior Mark] foreman {foreman_status} | Foreman ID: {pid_display} | Session ID: {session_short}"
-    line2 = f"[Junior Mark] {TURN_THRESHOLD} turns {eff_window:,} tokens | {msg}"
+    line2 = f"[Junior Mark] {turn_threshold(eff_window)} turns {eff_window:,} tokens | {msg}"
 
     tui_msg = f"\n{line1}\n{line2}"
     if session_warn_content:

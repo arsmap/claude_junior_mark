@@ -8,7 +8,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 try:
-    from bootstrap import get_data_dir, get_jm_paths, CONTEXT_TOKENS_FALLBACK, CONTEXT_WINDOW_OVERHEAD, WARN, THRESHOLD, find_cc_pid, recover_data_dir_by_cc_pid
+    from bootstrap import get_data_dir, get_jm_paths, CONTEXT_TOKENS_FALLBACK, CONTEXT_WINDOW_OVERHEAD, WARN, THRESHOLD, find_cc_pid, recover_data_dir_by_cc_pid, turn_threshold
 except Exception:
     sys.exit(0)
 
@@ -132,7 +132,7 @@ def main():
     k_tok = str(tokens // 1000) if tokens >= 1000 else str(tokens)
     k_win = f"{ctx_window // 1000}K"
 
-    print(f"{dot} [{bar}] {pct}% | {k_tok}/{k_win} | {turns}/30T | PID:{foreman_pid_str}")
+    print(f"{dot} [{bar}] {pct}% | {k_tok}/{k_win} | {turns}/{turn_threshold(ctx_window)}T | PID:{foreman_pid_str}")
     sys.stdout.flush()
 
 
