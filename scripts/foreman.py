@@ -113,7 +113,10 @@ def write_context_warn(metrics):
 def write_context_threshold(metrics):
     pct = metrics.get("token_pct", 0)
     tokens = metrics.get("context_tokens", 0)
-    msg = f"Context {pct}% exceeded ({tokens:,} tokens) — run move~ now. /compact likely to fail at this level."
+    if pct >= 100:
+        msg = f"Context {pct}% — move~ / end~ unavailable. /compact only."
+    else:
+        msg = f"Context {pct}% exceeded ({tokens:,} tokens) — run move~ now. /compact likely to fail at this level."
     try:
         P["context_threshold"].write_text(msg, encoding="utf-8")
     except Exception as e:
