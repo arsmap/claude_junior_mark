@@ -14,17 +14,17 @@ from datetime import datetime
 from pathlib import Path
 
 # ── system constants ─────────────────────────────────────────────
-# context window fallback (used when live token limit is unavailable). measured baseline: 200K.
-# effective CC limit ≈ 170K (200K minus 30K overhead = CONTEXT_WINDOW_OVERHEAD).
-# prior bug (167K fallback) reproduced: WARN=87%×167K≈145K, THRESHOLD=97%×167K≈162K
-# → converted to 200K basis: 145K/200K=72%, 162K/200K=81%
+# The context window is read LIVE from CC stdin (context_window_size, e.g. 1M on Opus).
+# The constants below are only fallback / calibration — never the live divisor.
+# Last-resort window size, used only when neither CC stdin nor .claude.json exposes a
+# live window. 200K = safe floor for legacy 200K-era models.
 CONTEXT_TOKENS_FALLBACK = 200_000
-CONTEXT_WINDOW_OVERHEAD = 30_000  # CC compact triggers at ~170K effective window
-TURN_THRESHOLD_BASE = 30          # turns budget per 200K-token window (scales with the live context window)
-TURN_BASE_WINDOW    = 200_000     # reference raw window the base is calibrated to
+CONTEXT_WINDOW_OVERHEAD = 30_000  # subtracted from the raw window → effective usable window
+TURN_THRESHOLD_BASE = 30          # turns budget per TURN_BASE_WINDOW; scales with the live window
+TURN_BASE_WINDOW    = 200_000     # turn-base calibration window (200K→30 turns, 1M→150)
 CHAR_THRESHOLD = 50_000
-WARN      = 82   # 164K tokens → CC ~10% remaining
-THRESHOLD = 92   # 184K tokens → CC  ~0% remaining
+WARN      = 82   # % of the live window → warn (~10% headroom left)
+THRESHOLD = 92   # % of the live window → critical (~0% headroom left)
 
 # ── track caller filename ───────────────────────────────────────
 _stack = inspect.stack()

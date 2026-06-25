@@ -180,6 +180,32 @@ def main():
         except Exception:
             pass
 
+    # 3-1. detect /clear in the main session's own window — new session_id, same CC process.
+    # /compact keeps the same session_id (Case 1 above); /clear issues a NEW one, so without
+    # this it falls through to guest detection (old id stored + same PID alive -> never promoted)
+    # and the whole cleared session is misflagged as a guest.
+    if session_id and data.get('source') == 'clear':
+        try:
+            my_cc = find_cc_pid()
+            stored_cc = None
+            cc_pid_file = P.get("cc_pid", DATA_DIR / "cc_pid.txt")
+            if cc_pid_file.exists():
+                _s = cc_pid_file.read_text(encoding='utf-8').strip()
+                stored_cc = int(_s) if _s.isdigit() else None
+            if my_cc and stored_cc and my_cc == stored_cc:
+                # /clear starts a FRESH conversation: drop the stale session pointer + guest flag,
+                # and purge continuity/telemetry so the main path below presents this as a new
+                # session (handoff_prev absence -> "new session 0%"). the alive-branch rotation
+                # is also skipped for source=='clear' so this purge is not undone.
+                for f_key in ["session_id", "is_guest_flag", "handoff", "handoff_prev", "relay", "token_usage"]:
+                    try:
+                        if f_key in P: P[f_key].unlink(missing_ok=True)
+                    except Exception:
+                        pass
+                log_to_foreman(f"/clear detected (CC PID {my_cc}) - fresh main session (telemetry reset)")
+        except Exception as e:
+            log_to_foreman(f"/clear detection error: {e}")
+
     # 3-2. early handoff.json zero — before any branch logic so StatusLine sees 0/30T immediately
     try:
         existing = {}
@@ -341,8 +367,10 @@ def main():
 
     if alive:
         # [continuing session] kill previous foreman and restart
+        # skip handoff->handoff_prev rotation for /clear: it starts a fresh conversation,
+        # so there is no prior-session continuity to carry (3-1 already purged telemetry)
         try:
-            if P["handoff"].exists():
+            if data.get('source') != 'clear' and P["handoff"].exists():
                 import shutil
                 shutil.copy2(P["handoff"], handoff_prev)
         except Exception:

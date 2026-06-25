@@ -127,6 +127,25 @@ def main():
                 foreman_pid_str = "..."
         else:
             dot = "⚫"  # mid-session foreman death — show last known values
+
+    # fresh start in the same window (/clear or new session): session_id differs from the stored one.
+    # CC feeds live tokens via stdin (handled above), but turns/PID come from our files and lag one
+    # render, so the bar would show stale turns/PID. Zero only those file-sourced fields; leave
+    # tokens/pct to CC (same as /compact). statusline stdin has no 'source' field, so detect via
+    # session_id mismatch; skip guest sessions so their bar is untouched.
+    try:
+        fresh_sid = data.get('session_id', '')
+        fresh_stored = ''
+        fresh_sid_path = Path(P.get('session_id', DATA_DIR / 'current_session_id.txt'))
+        if fresh_sid_path.exists():
+            fresh_stored = fresh_sid_path.read_text(encoding='utf-8').strip()
+        fresh_guest = Path(P.get('is_guest_flag', DATA_DIR / 'is_guest.flag'))
+        if fresh_sid and fresh_sid != fresh_stored and not fresh_guest.exists():
+            turns = 0
+            foreman_pid_str = "..."
+    except Exception:
+        pass
+
     filled = max(0, min(20, round(pct / 100 * 20)))
     bar = "█" * filled + "░" * (20 - filled)
     k_tok = str(tokens // 1000) if tokens >= 1000 else str(tokens)
