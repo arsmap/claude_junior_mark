@@ -8,7 +8,7 @@
 </p><br>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.04.29-blue" alt="Version" />
+  <img src="https://img.shields.io/badge/version-1.04.34-blue" alt="Version" />
   <img src="https://img.shields.io/badge/license-MIT-green" alt="License" />
   <img src="https://img.shields.io/badge/python-≥_3.8-3776AB?logo=python&logoColor=white" alt="Python" />
   <img src="https://img.shields.io/badge/platform-Windows-0078D4?logo=windows&logoColor=white" alt="Platform" />
@@ -104,6 +104,25 @@ Type these in any message to trigger session management:
 > - **Process control** (`on~` / `off~` / `restart~`): foreman process only — no session state change. Note: `restart~` is NOT a variant of `start~`.
 
 > The `~` suffix is required. Mentioning the word alone in conversation does nothing.  
+
+<br>
+
+## Guest session
+Opening a second Claude Code window on the same project while a session is already
+running starts a **guest session** (the status bar shows `👤 GUEST session`). A guest
+runs alongside the main session without interfering with it:
+
+- It is **not logged** — its turns/tokens are not recorded, and it does not touch the
+  main session's handoff or telemetry.
+- Session-ownership / foreman-control keywords are **blocked** so a guest cannot
+  disturb the main session's state:
+
+| Blocked in guest | Allowed in guest |
+|------------------|------------------|
+| `move~` `end~` `start~` `on~` `off~` `restart~` | `guest-end~` (ends the guest) |
+
+Read-only commands (e.g. `/report`) and `/clear` still work — they only affect the
+guest's own window.  
 
 <br>
 

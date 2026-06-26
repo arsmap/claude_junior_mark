@@ -8,7 +8,7 @@
 </p><br>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.04.29-blue" alt="Version" />
+  <img src="https://img.shields.io/badge/version-1.04.34-blue" alt="Version" />
   <img src="https://img.shields.io/badge/license-MIT-green" alt="License" />
   <img src="https://img.shields.io/badge/python-≥_3.8-3776AB?logo=python&logoColor=white" alt="Python" />
   <img src="https://img.shields.io/badge/platform-Windows-0078D4?logo=windows&logoColor=white" alt="Platform" />
@@ -101,6 +101,23 @@ install.bat
 
 > `~` 접미사가 있어야 명령으로 인식하며, 일반 대화 중에 키워드가 언급되더라도 오작동하지 않습니다.
   
+<br>
+
+## 게스트 세션
+이미 세션이 돌고 있는 같은 프로젝트에서 두 번째 Claude Code 창을 열면 **게스트 세션**이
+시작됩니다 (상태바에 `👤 GUEST session` 표시). 게스트는 메인 세션을 방해하지 않고 나란히
+동작합니다:
+
+- **기록되지 않음** — 턴/토큰이 집계되지 않으며, 메인 세션의 handoff·텔레메트리를 건드리지
+  않습니다.
+- 세션 소유권·포맨 제어 키워드는 **차단**되어, 게스트가 메인 세션 상태를 망가뜨릴 수 없습니다:
+
+| 게스트에서 차단 | 게스트에서 허용 |
+|----------------|----------------|
+| `move~` `end~` `start~` `on~` `off~` `restart~` | `guest-end~` (게스트 종료) |
+
+읽기 전용 명령(예: `/report`)과 `/clear`는 그대로 동작합니다 — 게스트 자기 창에만 영향을 줍니다.  
+
 <br>
 
 ## 상태바
