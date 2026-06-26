@@ -8,7 +8,7 @@
 </p><br>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.04.34-blue" alt="Version" />
+  <img src="https://img.shields.io/badge/version-1.04.35-blue" alt="Version" />
   <img src="https://img.shields.io/badge/license-MIT-green" alt="License" />
   <img src="https://img.shields.io/badge/python-≥_3.8-3776AB?logo=python&logoColor=white" alt="Python" />
   <img src="https://img.shields.io/badge/platform-Windows-0078D4?logo=windows&logoColor=white" alt="Platform" />
@@ -133,7 +133,7 @@ install.bat
 | ⚫ | 포맨 죽음 → `restart~` 입력 또는 새 세션 열기 |
 | `X% \| N/200K` | 토큰 사용률 |
 | `N/30T` | 현재 세션 턴 수 |
-| `PID:N` | 포맨 프로세스 ID (`----`이면 죽은 상태) |  
+| `PID:N` | 포맨 프로세스 ID (`----`이면 죽은 상태 / `...` 이면 세션 미점유 상태) |  
 <br>
 
 ## 경고 신호

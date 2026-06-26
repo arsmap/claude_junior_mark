@@ -129,10 +129,10 @@ def main():
             dot = "⚫"  # mid-session foreman death — show last known values
 
     # fresh start in the same window (/clear or new session): session_id differs from the stored one.
-    # CC feeds live tokens via stdin (handled above), but turns/PID come from our files and lag one
-    # render, so the bar would show stale turns/PID. Zero only those file-sourced fields; leave
-    # tokens/pct to CC (same as /compact). statusline stdin has no 'source' field, so detect via
-    # session_id mismatch; skip guest sessions so their bar is untouched.
+    # Show a clean "session just started" bar (⚪ 0.0% | 0/win | 0/T | PID:...) for this one render,
+    # so /clear looks like a fresh session instead of carrying the cleared context's token usage.
+    # The next prompt restores live values from CC stdin. statusline stdin has no 'source' field, so
+    # detect via session_id mismatch; skip guest sessions so their bar is untouched.
     try:
         fresh_sid = data.get('session_id', '')
         fresh_stored = ''
@@ -141,6 +141,9 @@ def main():
             fresh_stored = fresh_sid_path.read_text(encoding='utf-8').strip()
         fresh_guest = Path(P.get('is_guest_flag', DATA_DIR / 'is_guest.flag'))
         if fresh_sid and fresh_sid != fresh_stored and not fresh_guest.exists():
+            tokens = 0
+            pct = 0.0
+            dot = "⚪"
             turns = 0
             foreman_pid_str = "..."
     except Exception:
