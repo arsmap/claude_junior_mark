@@ -206,27 +206,8 @@ def main():
         except Exception as e:
             log_to_foreman(f"/clear detection error: {e}")
 
-    # 3-2. early handoff.json zero — before any branch logic so StatusLine sees 0/30T immediately
-    try:
-        existing = {}
-        if P["handoff"].exists():
-            try:
-                existing = json.loads(P["handoff"].read_text(encoding='utf-8'))
-            except Exception:
-                pass
-        existing.setdefault('metrics', {})['total_turns'] = 0
-        P["handoff"].write_text(json.dumps(existing, ensure_ascii=False, indent=2), encoding='utf-8')
-    except Exception:
-        pass
-    try:
-        P["token_usage"].write_text("0", encoding='utf-8')
-    except Exception:
-        pass
-    try:
-        if P.get("force_retire_mute") and Path(P["force_retire_mute"]).exists():
-            Path(P["force_retire_mute"]).unlink(missing_ok=True)
-    except Exception:
-        pass
+    # 3-2 moved below the guest return — a guest must not zero the shared handoff/token_usage.
+    # (signal_checker already skips relay/token logging for guests; this matches that isolation.)
 
     # 3-4. clear old session flag — always remove on new session start
     try:
@@ -333,6 +314,31 @@ def main():
         except Exception:
             pass
         return
+
+    # 3-2. handoff.json zero — runs only for the MAIN session (guests already returned above),
+    # so a guest never zeroes the shared handoff/token_usage. still before the foreman branch
+    # logic and the handoff->handoff_prev rotation, so StatusLine sees 0 turns on a fresh main
+    # session and the rotation keeps copying a zeroed handoff exactly as before.
+    try:
+        existing = {}
+        if P["handoff"].exists():
+            try:
+                existing = json.loads(P["handoff"].read_text(encoding='utf-8'))
+            except Exception:
+                pass
+        existing.setdefault('metrics', {})['total_turns'] = 0
+        P["handoff"].write_text(json.dumps(existing, ensure_ascii=False, indent=2), encoding='utf-8')
+    except Exception:
+        pass
+    try:
+        P["token_usage"].write_text("0", encoding='utf-8')
+    except Exception:
+        pass
+    try:
+        if P.get("force_retire_mute") and Path(P["force_retire_mute"]).exists():
+            Path(P["force_retire_mute"]).unlink(missing_ok=True)
+    except Exception:
+        pass
 
     # 4-0. clear previous guest session flag
     try:
