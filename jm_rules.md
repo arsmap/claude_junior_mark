@@ -60,12 +60,17 @@ If the path does not exist, treat as an error (no fallback).
 ## 3. Session Start Context Rules
 
 **Check system-reminder before the first message:**
-- `IS_GUEST=true` or `IS_NEW_SESSION=true` → **respond immediately. Do NOT read any handoff files. Do NOT output "Reading handoff."** (Rule 5 `💾 farewell detected` signal still applies with highest priority)
+- `IS_GUEST=true` or `IS_NEW_SESSION=true` → **respond immediately. Do NOT read any handoff files. Do NOT output "Reading handoff."** Instead, when the wiki anchor is read (see wiki_rules.md), output `Reading wiki anchor.` — never substitute the handoff label. (Rule 5 `💾 farewell detected` signal still applies with highest priority)
 - `Session already ended` → output the following and stop:
   ```
   Session has ended. Type start~ to begin a new session.
   ```
 - Otherwise → proceed to read handoff (output only "Reading handoff." — do not expose path or details)
+
+**Wiki anchor (read & write):** all wiki anchor rules — read side (runs before handoff,
+`IS_GUEST=false`), output message, write side, write eligibility — live in
+`~/.claude/plugins/junior_mark/wiki_rules.md` (loaded via CLAUDE.md @include alongside
+this file). Follow them at session start and before any session break.
 
 **Reading handoff** (must do first, regardless of whether the first message is a greeting):
 1. Confirm DATA_DIR (Rule 1-1)
@@ -81,10 +86,15 @@ If the path does not exist, treat as an error (no fallback).
 ## 5. Session End Procedure
 
 **Hook signal handling (highest priority):**
-`💾 farewell detected` in system-reminder → present choices via **AskUserQuestion**
+`💾 farewell detected` in system-reminder → **first** ensure the wiki anchor is current,
+**then** present choices via **AskUserQuestion**.
 Exception: if `Session already ended` or `already ended` appears, skip and respond naturally.
 
-**Choices:** move~ / end~
+**Anchor freshness is a pre-menu step** — see wiki_rules.md §5. Sessions that edited no
+wiki content skip anchor writing entirely (wiki_rules.md §4) and go straight to the
+choices. The branches below assume the anchor is current.
+
+**Choices:** move~ / end~ / clear
 
 **move~** (typed directly or selected):
 1. Confirm DATA_DIR (Rule 1-1)
@@ -98,9 +108,16 @@ Exception: if `Session already ended` or `already ended` appears, skip and respo
 1. Confirm DATA_DIR (Rule 1-1)
 2. Run `python ~/.claude/plugins/junior_mark/scripts/foreman_off.py "{DATA_DIR}"` + output exactly: `end complete.`
 
+**clear** (selected — `/clear` is a CC built-in, so Claude cannot invoke it; only guide):
+The anchor is already current (ensured pre-menu above) — the anchor is what carries the
+work thread across `/clear` (handoff is purged, the wiki survives). No snapshot, no
+foreman script — same session, foreman keeps running.
+Output exactly: `anchor ready — type /clear to continue.`
+
 **Context judgement:**
 - "move~" / "opening a new session" → move
 - "end~" → end
+- "clear" / "/clear로 이어감" (same session, fresh context) → clear
 - farewell / wrap-up / session move notice → ambiguous → present choices
 
 **start~:** If `HOOK_FOREMAN_ON_DONE` is in system-reminder, do not run Claude further. Output exactly: `start complete.`
@@ -144,3 +161,13 @@ Previous session (handoff_prev.json)
 ```
 
 If a file is absent, show "file not found" for that section. If decided items exist, list all with numbers.
+
+## 9. File Read Rule
+
+- Read files with the Read tool, not shell commands (cat/tail/head, Get-Content,
+  [System.IO.File]::ReadAll*). This includes line counting and partial reads — read the
+  whole file with Read and take what you need.
+- Why: shell reads trigger permission prompts and break UTF-8 under the cp949 console
+  (PowerShell 5.1 reads BOM-less UTF-8 as ANSI).
+- The read_guard hook (PreToolUse, Bash|PowerShell) denies bare shell reads as a backstop;
+  do not reach for variants (pipes, .NET calls) to get around it.

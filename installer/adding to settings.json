@@ -1,9 +1,37 @@
+  "permissions": {
+    "allow": [
+      "Read(~/.claude/plugins/junior_mark/wiki/**)",
+      "Bash(python ~/.claude/plugins/junior_mark/scripts/foreman_off.py:*)"
+    ]
+  },	
   "statusLine": {
     "type": "command",
     "command": "python ~/.claude/plugins/junior_mark/scripts/statusline.py",
     "shell": "bash"
   },
   "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python ~/.claude/plugins/junior_mark/scripts/cd_guard.py 2>>\"$HOME/.claude/plugins/junior_mark/debug/hook_stderr.txt\" || true",
+            "shell": "bash"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash|PowerShell",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python ~/.claude/plugins/junior_mark/scripts/read_guard.py 2>>\"$HOME/.claude/plugins/junior_mark/debug/hook_stderr.txt\" || true",
+            "shell": "bash"
+          }
+        ]
+      }
+    ],
     "PostToolUse": [
       {
         "hooks": [

@@ -201,6 +201,73 @@ def find_cc_pid():
         return None
 
 
+# ── crash-corruption-tolerant lock file I/O (shared) ─────────────
+# A hard crash (BSOD / power loss) can leave a lock file that EXISTS but is
+# NUL-filled or torn: NTFS commits a file's size before its data blocks flush, so
+# the unflushed region reads back as \x00. str.strip() removes whitespace but NOT
+# \x00, so a NUL-filled id/pid reads as a valid non-empty value and wedges the
+# guest/main decision into a permanent guest deadlock (2026-07-08 BSOD incident).
+# No writer durability guarantee survives arbitrary power loss, so read-side
+# validation is the only reliable defense: every lock read goes through here and
+# treats corrupt/empty content as absent (fail toward a claimable lock, never a
+# phantom held one).
+def clean_lock_text(raw):
+    """Strip NUL bytes, control chars, and surrounding whitespace. Returns '' for
+    NUL-filled / empty / whitespace-only content. Loose validation (no format
+    regex) so a legitimate value is never rejected."""
+    if not raw:
+        return ''
+    cleaned = ''.join(ch for ch in raw if ch >= ' ' and ch != '\x7f')
+    return cleaned.strip()
+
+
+def read_lock_id(path):
+    """Read a session-id lock file → cleaned id string, or '' if absent / corrupt /
+    empty. Corrupt content is treated as 'no lock held'."""
+    try:
+        p = Path(path)
+        if not p.exists():
+            return ''
+        return clean_lock_text(p.read_text(encoding='utf-8', errors='replace'))
+    except Exception:
+        return ''
+
+
+def read_lock_int(path):
+    """Read an integer lock file (pid / creation-time) → positive int, or None if
+    absent / corrupt / non-numeric. Corrupt content is treated as 'no lock held'."""
+    try:
+        p = Path(path)
+        if not p.exists():
+            return None
+        s = clean_lock_text(p.read_text(encoding='utf-8', errors='replace'))
+        if s.isdigit():
+            v = int(s)
+            return v if v > 0 else None
+        return None
+    except Exception:
+        return None
+
+
+def atomic_write_lock(path, content):
+    """Write via temp-file + os.replace so a concurrent reader never catches a
+    truncated/partial file (closes the double-main race that read-validation
+    opens). Concurrency guard, NOT a crash-durability guarantee — hard crashes are
+    handled on the read side (see clean_lock_text)."""
+    try:
+        p = Path(path)
+        tmp = p.with_name(p.name + '.tmp')
+        tmp.write_text(content, encoding='utf-8')
+        os.replace(str(tmp), str(p))
+        return True
+    except Exception:
+        try:  # last resort: never leave the lock unwritten
+            Path(path).write_text(content, encoding='utf-8')
+        except Exception:
+            pass
+        return False
+
+
 # ── effective context window (raw window - overhead), shared ─────
 def read_eff_window(P=None, DATA_DIR=None):
     """Effective context window = raw window - overhead.

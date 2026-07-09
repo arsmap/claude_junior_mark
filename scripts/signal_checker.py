@@ -12,7 +12,7 @@ from pathlib import Path
 # [1] load bootstrap (paths / constants / stream init)
 sys.path.insert(0, str(Path(__file__).parent))
 try:
-    from bootstrap import get_data_dir, get_jm_paths, JM_BASE, find_cc_pid, read_transcript_tokens
+    from bootstrap import get_data_dir, get_jm_paths, JM_BASE, find_cc_pid, read_transcript_tokens, read_lock_id, clean_lock_text, atomic_write_lock
 except Exception:
     try:
         from pathlib import Path as _P; from datetime import datetime as _dt; import traceback as _tb
@@ -128,7 +128,9 @@ def main():
     is_guest = False
     if my_session_id and P.get('session_id') and P['session_id'].exists():
         try:
-            current_id = P['session_id'].read_text(encoding='utf-8').strip()
+            # read_lock_id → '' for a NUL-corrupt current_session_id.txt, so a crash-
+            # torn lock no longer blocks a healthy main as a bogus "stale session".
+            current_id = read_lock_id(P['session_id'])
             if current_id and my_session_id != current_id:
 
                 # handle guest-end~ first — works even without guest_session_id.txt
@@ -139,18 +141,19 @@ def main():
                         gf = P.get("guest_session_id", DATA_DIR / "guest_session_id.txt")
                         if gf.exists():
                             remaining = []
-                            for line in gf.read_text(encoding='utf-8').splitlines():
-                                if not line.strip():
+                            for line in gf.read_text(encoding='utf-8', errors='replace').splitlines():
+                                cl = clean_lock_text(line)
+                                if not cl:
                                     continue
-                                parts = line.strip().split(':')
+                                parts = cl.split(':')
                                 sid = parts[0]
                                 if sid == my_session_id:
                                     if len(parts) > 1 and parts[1].isdigit():
                                         stored_cc_pid = int(parts[1])
                                 else:
-                                    remaining.append(line.strip())
+                                    remaining.append(cl)
                             if remaining:
-                                gf.write_text('\n'.join(remaining) + '\n', encoding='utf-8')
+                                atomic_write_lock(gf, '\n'.join(remaining) + '\n')
                             else:
                                 gf.unlink(missing_ok=True)
                         dbg(f"guest-end~ — removed from session_id, stored_cc_pid={stored_cc_pid} ({my_session_id[:8]})")
@@ -166,9 +169,11 @@ def main():
                 guest_file = P.get("guest_session_id", DATA_DIR / "guest_session_id.txt")
                 try:
                     if guest_file.exists():
-                        guest_ids = set(line.split(':')[0].strip()
-                                        for line in guest_file.read_text(encoding='utf-8').splitlines()
-                                        if line.strip())
+                        guest_ids = set()
+                        for line in guest_file.read_text(encoding='utf-8', errors='replace').splitlines():
+                            cl = clean_lock_text(line)
+                            if cl:
+                                guest_ids.add(cl.split(':')[0])
                         is_guest = my_session_id in guest_ids
                 except Exception:
                     pass
@@ -191,12 +196,19 @@ def main():
                     return
                 else:
                     dbg(f"guest session detected — skipping relay ({my_session_id[:8]})")
-                    # handle guest session commands
-                    _GUEST_BLOCKED_EXACT = ["move~", "end~", "start~", "on~", "off~", "restart~"]
+                    # handle guest session commands — block all session-state commands uniformly,
+                    # including wrapped forms like "guest end~" (exact match alone let variants leak
+                    # through and the guest-side model then ran the end~ procedure on the shared DATA_DIR)
+                    _GUEST_BLOCKED = ["move~", "end~", "start~", "on~", "off~", "restart~"]
                     _prompt_stripped = prompt.strip() if prompt else ""
-
-                    if _prompt_stripped in _GUEST_BLOCKED_EXACT:
-                        print(json.dumps({"decision": "block", "reason": "This command is not available in a guest session."}, ensure_ascii=False))
+                    _blocked_hit = next(
+                        (kw for kw in _GUEST_BLOCKED
+                         if re.search(r'(?:^|[\s\-])' + re.escape(kw) + r'$', _prompt_stripped)),
+                        None
+                    )
+                    if _blocked_hit:
+                        dbg(f"guest blocked session command: {_blocked_hit!r} in {_prompt_stripped!r}")
+                        print(json.dumps({"decision": "block", "reason": "This command is not available in a guest session. To end a guest session, type guest-end~."}, ensure_ascii=False))
                         sys.stdout.flush()
                         return
         except Exception as e:

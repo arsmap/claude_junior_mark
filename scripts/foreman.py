@@ -12,7 +12,7 @@ from pathlib import Path
 # [1] load bootstrap (paths / constants / stream init)
 sys.path.insert(0, str(Path(__file__).parent))
 try:
-    from bootstrap import get_data_dir, get_jm_paths, WARN, THRESHOLD, register_session, lookup_session, compute_handoff_metrics, build_handoff, cwd_to_slug, slug_to_path
+    from bootstrap import get_data_dir, get_jm_paths, WARN, THRESHOLD, register_session, lookup_session, compute_handoff_metrics, build_handoff, cwd_to_slug, slug_to_path, read_lock_int, clean_lock_text
 except Exception:
     try:
         from pathlib import Path as _P; from datetime import datetime as _dt; import traceback as _tb
@@ -38,17 +38,50 @@ DATA_DIR = get_data_dir()
 P = get_jm_paths(DATA_DIR)
 
 
-def is_cc_alive(pid):
-    """Check if CC process is alive via Windows API. Returns True (conservative) if check fails."""
+def is_cc_alive(pid, recorded_start=None):
+    """Check the CC PID is alive AND still our CC — guards against PID reuse.
+    Identity is anchored on the process CREATION TIME: immutable across a binary rename
+    (CC auto-update renames the running exe to claude.exe.old.<ts>) and distinct for a
+    reused PID. The image-name check is only a FALLBACK for when the creation time is
+    unavailable (no recorded value / API failure); startswith('claude.exe') tolerates the
+    .old rename, still excluding the Desktop WindowsApps bundle. Uses ctypes (not tasklist)
+    because this runs every CHECK_INTERVAL. Returns True (conservative) if the check fails."""
     try:
         import ctypes
+        from ctypes import wintypes, byref
+        k32 = ctypes.windll.kernel32
         PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
-        handle = ctypes.windll.kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+        handle = k32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
         if not handle: return False
-        code = ctypes.c_ulong()
-        ctypes.windll.kernel32.GetExitCodeProcess(handle, ctypes.byref(code))
-        ctypes.windll.kernel32.CloseHandle(handle)
-        return code.value == 259  # STILL_ACTIVE
+        try:
+            code = ctypes.c_ulong()
+            k32.GetExitCodeProcess(handle, ctypes.byref(code))
+            if code.value != 259:  # STILL_ACTIVE
+                return False
+            # primary: creation-time identity (decisive only when both sides are known —
+            # a reused PID gets a different creation time; a renamed binary keeps the same)
+            if recorded_start is not None:
+                class _FT(ctypes.Structure):
+                    _fields_ = [("lo", wintypes.DWORD), ("hi", wintypes.DWORD)]
+                c, e, ke, us = _FT(), _FT(), _FT(), _FT()
+                if k32.GetProcessTimes(handle, byref(c), byref(e), byref(ke), byref(us)):
+                    return ((c.hi << 32) | c.lo) == recorded_start
+                # GetProcessTimes failed → fall through to name fallback
+            # fallback: image name (startswith 'claude.exe' tolerates the claude.exe.old.<ts>
+            # rename; still excludes the Desktop WindowsApps bundle); install-location independent
+            buf = ctypes.create_unicode_buffer(260)
+            size = wintypes.DWORD(260)
+            k32.QueryFullProcessImageNameW.argtypes = [
+                wintypes.HANDLE, wintypes.DWORD,
+                ctypes.c_wchar_p, ctypes.POINTER(wintypes.DWORD)
+            ]
+            k32.QueryFullProcessImageNameW.restype = wintypes.BOOL
+            if k32.QueryFullProcessImageNameW(handle, 0, buf, ctypes.byref(size)):
+                full = buf.value.lower().replace('\\', '/')
+                return full.rsplit('/', 1)[-1].startswith('claude.exe') and 'windowsapps' not in full
+            return True  # name query failed → liveness-only fallback (conservative)
+        finally:
+            k32.CloseHandle(handle)
     except Exception:
         return True
 
@@ -125,7 +158,7 @@ def write_context_threshold(metrics):
 
 def main():
     DATA_DIR.mkdir(parents=True, exist_ok=True)
-    P["pid"].write_text(str(os.getpid()), encoding="utf-8")
+    atomic_write(P["pid"], str(os.getpid()))
 
     # record script hash (used by session_start for staleness check)
     def _file_hash(p):
@@ -137,17 +170,19 @@ def main():
     # CC process PID file path (written by session_start.py, re-read each loop)
     cc_pid_file = Path(P.get("cc_pid") or DATA_DIR / "cc_pid.txt")
 
-    def read_cc_pid():
-        try:
-            if cc_pid_file.exists():
-                val = cc_pid_file.read_text(encoding='utf-8').strip()
-                if val.isdigit():
-                    return int(val)
-        except Exception:
-            pass
-        return None
+    cc_start_file = DATA_DIR / "cc_pid_start.txt"
 
-    cc_pid = read_cc_pid()
+    def read_cc_pid():
+        """Return (pid, start_time) — start_time is the recorded process creation time
+        (identity anchor, None if absent). cc_pid.txt keeps its plain-pid format; the
+        creation time lives in the sibling cc_pid_start.txt (leaves cc_pid.txt readers
+        untouched)."""
+        pid = read_lock_int(cc_pid_file)
+        if pid is not None:
+            return pid, read_lock_int(cc_start_file)
+        return None, None
+
+    cc_pid, cc_start = read_cc_pid()
     if cc_pid:
         log(f"foreman started (PID={os.getpid()}, CC_PID={cc_pid} watch mode)")
     else:
@@ -156,17 +191,18 @@ def main():
     while True:
         try:
             # re-read cc_pid.txt each loop — detect PID change or new entry
-            new_cc_pid = read_cc_pid()
+            new_cc_pid, new_cc_start = read_cc_pid()
             if new_cc_pid != cc_pid:
                 if new_cc_pid:
                     log(f"CC_PID updated: {cc_pid} → {new_cc_pid} (switching to watch mode)")
                 else:
                     log(f"CC_PID gone: {cc_pid} → None (switching to fallback mode)")
                 cc_pid = new_cc_pid
+            cc_start = new_cc_start  # keep the recorded creation time in sync each loop
 
             # monitor CC process — if PID is set, check liveness first
             if cc_pid is not None:
-                if not is_cc_alive(cc_pid):
+                if not is_cc_alive(cc_pid, cc_start):
                     log(f"CC process (PID={cc_pid}) exit detected — shutting down")
                     try:
                         P["foreman_exit"].write_text("foreman stopped — CC process exit detected.", encoding="utf-8")
@@ -193,7 +229,8 @@ def main():
             guest_file = P.get("guest_session_id", DATA_DIR / "guest_session_id.txt")
             if guest_file.exists():
                 try:
-                    lines = [l.strip() for l in guest_file.read_text(encoding='utf-8').splitlines() if l.strip()]
+                    lines = [clean_lock_text(l) for l in guest_file.read_text(encoding='utf-8', errors='replace').splitlines()]
+                    lines = [l for l in lines if l]
                     surviving = []
                     removed = []
                     for line in lines:
@@ -208,7 +245,7 @@ def main():
                             surviving.append(line)
                     if removed:
                         if surviving:
-                            guest_file.write_text('\n'.join(surviving) + '\n', encoding='utf-8')
+                            atomic_write(guest_file, '\n'.join(surviving) + '\n')
                         else:
                             guest_file.unlink(missing_ok=True)
                         for r in removed:
@@ -330,6 +367,11 @@ def main():
         if cc_pid_cleanup.exists():
             cc_pid_cleanup.unlink()
             log("cleanup: cc_pid.txt deleted")
+        # the creation-time sidecar shares cc_pid.txt's lifecycle
+        cc_start_cleanup = DATA_DIR / "cc_pid_start.txt"
+        if cc_start_cleanup.exists():
+            cc_start_cleanup.unlink()
+            log("cleanup: cc_pid_start.txt deleted")
     except Exception as e:
         log(f"cleanup error (cc_pid): {e}")
 

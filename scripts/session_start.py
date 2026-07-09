@@ -13,7 +13,7 @@ from pathlib import Path
 # [1] load bootstrap (paths / constants / stream init)
 sys.path.insert(0, str(Path(__file__).parent))
 try:
-    from bootstrap import get_data_dir, get_jm_paths, JM_BASE, turn_threshold, register_session, find_cc_pid, read_eff_window, read_transcript_tokens, recover_data_dir_by_cc_pid
+    from bootstrap import get_data_dir, get_jm_paths, JM_BASE, turn_threshold, register_session, find_cc_pid, read_eff_window, read_transcript_tokens, recover_data_dir_by_cc_pid, read_lock_id, read_lock_int, atomic_write_lock
 except Exception:
     try:
         from pathlib import Path as _P; from datetime import datetime as _dt; import traceback as _tb
@@ -38,6 +38,9 @@ def read_token_pct_from_transcript(transcript_path_str):
     return min(round(last_tokens / eff_window * 100), 999)
 
 SCRIPTS_DIR = Path(__file__).parent
+# guest→main promotion: idle threshold for a cc_pid.txt-absent (fallback-mode) previous main.
+# keep in sync with foreman.py INACTIVITY_TIMEOUT — foreman auto-exits at the same idle.
+INACTIVITY_TIMEOUT = 5 * 60
 
 
 def _file_hash(p):
@@ -77,6 +80,115 @@ def is_foreman_alive():
                            capture_output=True, text=True, check=False)
         return str(pid) in r.stdout and "python" in r.stdout.lower()
     except: return False
+
+
+def get_proc_start_time(pid):
+    """Process creation time (FILETIME 100ns intervals as int) — a rename-proof,
+    reuse-distinct identity anchor recorded alongside cc_pid.txt (in cc_pid_start.txt).
+    Returns None on failure."""
+    try:
+        import ctypes
+        from ctypes import wintypes, byref
+        k32 = ctypes.windll.kernel32
+        handle = k32.OpenProcess(0x1000, False, pid)  # PROCESS_QUERY_LIMITED_INFORMATION
+        if not handle:
+            return None
+        try:
+            class _FT(ctypes.Structure):
+                _fields_ = [("lo", wintypes.DWORD), ("hi", wintypes.DWORD)]
+            c, e, ke, us = _FT(), _FT(), _FT(), _FT()
+            if k32.GetProcessTimes(handle, byref(c), byref(e), byref(ke), byref(us)):
+                return (c.hi << 32) | c.lo
+            return None
+        finally:
+            k32.CloseHandle(handle)
+    except Exception:
+        return None
+
+
+def is_cc_pid_alive(pid, recorded_start=None):
+    """Check the PID is alive AND is our Claude Code CLI — guards against PID reuse after reboot/BSOD
+    and against Desktop Claude.exe being mistaken for the CLI. Identity is anchored on the process
+    CREATION TIME (immutable across the auto-updater's claude.exe.old.<ts> rename; distinct for a
+    reused PID). The image-name check is only a FALLBACK for when the creation time is unavailable;
+    startswith('claude.exe') tolerates the rename, still excluding the Desktop WindowsApps bundle.
+    Returns True if uncertain (conservative: stay guest, avoid double-main)."""
+    try:
+        import ctypes
+        from ctypes import wintypes, byref
+        k32 = ctypes.windll.kernel32
+        PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+        handle = k32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+        if not handle:
+            return False
+        try:
+            code = ctypes.c_ulong()
+            k32.GetExitCodeProcess(handle, ctypes.byref(code))
+            if code.value != 259:  # STILL_ACTIVE
+                return False
+            # primary: creation-time identity (decisive only when both sides are known)
+            if recorded_start is not None:
+                class _FT(ctypes.Structure):
+                    _fields_ = [("lo", wintypes.DWORD), ("hi", wintypes.DWORD)]
+                c, e, ke, us = _FT(), _FT(), _FT(), _FT()
+                if k32.GetProcessTimes(handle, byref(c), byref(e), byref(ke), byref(us)):
+                    return ((c.hi << 32) | c.lo) == recorded_start
+                # GetProcessTimes failed → fall through to name fallback
+            buf = ctypes.create_unicode_buffer(260)
+            size = wintypes.DWORD(260)
+            k32.QueryFullProcessImageNameW.argtypes = [
+                wintypes.HANDLE, wintypes.DWORD,
+                ctypes.c_wchar_p, ctypes.POINTER(wintypes.DWORD)
+            ]
+            k32.QueryFullProcessImageNameW.restype = wintypes.BOOL
+            if k32.QueryFullProcessImageNameW(handle, 0, buf, ctypes.byref(size)):
+                full = buf.value.lower().replace('\\', '/')
+                return full.rsplit('/', 1)[-1].startswith('claude.exe') and 'windowsapps' not in full
+            return True  # name query failed → liveness-only fallback (conservative)
+        finally:
+            k32.CloseHandle(handle)
+    except Exception:
+        return True
+
+
+def is_desktop_cc(pid):
+    """Return True only if the given PID is a Desktop-launched Claude (skip target).
+    Desktop has two signatures: the UI bundle (...\\WindowsApps\\...\\Claude.exe) and the
+    Code-tab CLI engine it spawns inside its UWP package container. The engine's real kernel
+    path (QueryFullProcessImageNameW) is ...\\AppData\\Local\\Packages\\Claude_<pub>\\LocalCache\\
+    ...\\claude-code\\<ver>\\claude.exe — the AppData\\Roaming\\Claude form is UWP-virtualized,
+    so the resolved path has no 'windowsapps' and both signatures ('windowsapps' for the UI,
+    '/packages/claude_' for the engine) are needed. find_cc_pid returns the engine as the
+    launching CC. A real CLI install (.local\\bin\\claude.exe) matches neither. Blacklist
+    (not whitelist) keeps the failure direction fail-open: returns False on any uncertainty
+    (no pid / open fail / query fail / exception / unknown path) so a normal CLI session is
+    never mistakenly skipped."""
+    if not pid:
+        return False
+    try:
+        import ctypes
+        from ctypes import wintypes
+        k32 = ctypes.windll.kernel32
+        PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+        handle = k32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+        if not handle:
+            return False
+        try:
+            buf = ctypes.create_unicode_buffer(260)
+            size = wintypes.DWORD(260)
+            k32.QueryFullProcessImageNameW.argtypes = [
+                wintypes.HANDLE, wintypes.DWORD,
+                ctypes.c_wchar_p, ctypes.POINTER(wintypes.DWORD)
+            ]
+            k32.QueryFullProcessImageNameW.restype = wintypes.BOOL
+            if k32.QueryFullProcessImageNameW(handle, 0, buf, ctypes.byref(size)):
+                full = buf.value.lower().replace('\\', '/')
+                return 'windowsapps' in full or '/packages/claude_' in full
+            return False  # query failed → fail-open (treat as normal CLI)
+        finally:
+            k32.CloseHandle(handle)
+    except Exception:
+        return False
 
 
 def is_pid_alive(pid):
@@ -138,10 +250,19 @@ def main():
     # 2. initialize path system
     # read session_id first to prioritize session_map lookup — prevents hook CWD pollution
     session_id = data.get('session_id', '')
+
+    # ③-b prevention: Desktop Claude.exe runs ~/.claude hooks too, and its scattered CWDs
+    # fragment/pollute DATA_DIRs (invisible pollution). If the CC that launched us is the
+    # Desktop WindowsApps bundle, no-op out before touching any state (no DATA_DIR mkdir,
+    # no register, no foreman). fail-open: only skip on a confirmed WindowsApps parent.
+    my_cc_pid = find_cc_pid()
+    if is_desktop_cc(my_cc_pid):
+        return
+
     DATA_DIR = get_data_dir(hook_cwd=data.get('cwd'), session_id=session_id)
 
     # validate DATA_DIR by scanning cc_pid.txt — fallback when session_map is stale
-    DATA_DIR = recover_data_dir_by_cc_pid(DATA_DIR, find_cc_pid())
+    DATA_DIR = recover_data_dir_by_cc_pid(DATA_DIR, my_cc_pid)
 
     P = get_jm_paths(DATA_DIR)
     DATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -151,7 +272,7 @@ def main():
     # → exit silently without doing anything
     if session_id and P['session_id'].exists():
         try:
-            stored_id = P['session_id'].read_text(encoding='utf-8').strip()
+            stored_id = read_lock_id(P['session_id'])
             if stored_id and session_id == stored_id:
                 for f_key in ["context_warn", "context_threshold", "token_usage"]:
                     try:
@@ -187,11 +308,8 @@ def main():
     if session_id and data.get('source') == 'clear':
         try:
             my_cc = find_cc_pid()
-            stored_cc = None
             cc_pid_file = P.get("cc_pid", DATA_DIR / "cc_pid.txt")
-            if cc_pid_file.exists():
-                _s = cc_pid_file.read_text(encoding='utf-8').strip()
-                stored_cc = int(_s) if _s.isdigit() else None
+            stored_cc = read_lock_int(cc_pid_file)
             if my_cc and stored_cc and my_cc == stored_cc:
                 # /clear starts a FRESH conversation: drop the stale session pointer + guest flag,
                 # and purge continuity/telemetry so the main path below presents this as a new
@@ -231,56 +349,84 @@ def main():
 
     # [ownership check] independent of foreman state — decide GUEST/main based on retire status
     is_guest = False
-    if session_id and P['session_id'].exists():
+    # read_lock_id treats a NUL-corrupt / torn current_session_id.txt as '' (no
+    # lock) → a crash-corrupted lock no longer pins every new session to guest.
+    stored_id = read_lock_id(P['session_id'])
+    if session_id and stored_id and stored_id != session_id:
         try:
-            stored_id = P['session_id'].read_text(encoding='utf-8').strip()
-            if stored_id and stored_id != session_id:
-                if not retire_data_file.exists():
+            if not retire_data_file.exists():
+                is_guest = True
+            else:
+                # retire_data exists → attempt main session claim.
+                # O_CREAT|O_EXCL is atomic on NTFS — only first session succeeds,
+                # subsequent sessions get OSError → treated as guest.
+                claim_lock = DATA_DIR / "retire_claim.lock"
+                try:
+                    fd = os.open(str(claim_lock), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+                    os.close(fd)
+                except OSError:
                     is_guest = True
-                else:
-                    # retire_data exists → attempt main session claim.
-                    # O_CREAT|O_EXCL is atomic on NTFS — only first session succeeds,
-                    # subsequent sessions get OSError → treated as guest.
-                    claim_lock = DATA_DIR / "retire_claim.lock"
-                    try:
-                        fd = os.open(str(claim_lock), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-                        os.close(fd)
-                    except OSError:
-                        is_guest = True
         except Exception:
             pass
 
     if is_guest:
-        # [recovery check] promote to main if the previous active session's CC PID is already dead
+        # [recovery check] promote to main if the previous main session is already gone
         try:
             cc_pid_file = P.get("cc_pid", DATA_DIR / "cc_pid.txt")
-            if cc_pid_file.exists():
-                prev_cc_str = cc_pid_file.read_text(encoding='utf-8').strip()
-                if prev_cc_str.isdigit():
-                    prev_cc_pid = int(prev_cc_str)
-                    if not is_pid_alive(prev_cc_pid):
-                        log_to_foreman(f"guest→main promoted: previous CC PID={prev_cc_pid} confirmed dead")
-                        try:
-                            P['session_id'].unlink(missing_ok=True)
-                            log_to_foreman("cleanup: removed current_session_id.txt (promoted)")
-                        except Exception as e:
-                            log_to_foreman(f"cleanup error (session_id): {e}")
-                        try:
-                            P['handoff'].unlink(missing_ok=True)
-                            log_to_foreman("cleanup: removed handoff.json (promoted)")
-                        except Exception as e:
-                            log_to_foreman(f"cleanup error (handoff): {e}")
-                        try:
-                            P['handoff_prev'].unlink(missing_ok=True)
-                            log_to_foreman("cleanup: removed handoff_prev.json (promoted → first session after force-close)")
-                        except Exception as e:
-                            log_to_foreman(f"cleanup error (handoff_prev): {e}")
-                        try:
-                            P['pre_retire_summary'].unlink(missing_ok=True)
-                            log_to_foreman("cleanup: removed pre_retire_summary.json (promoted)")
-                        except Exception as e:
-                            log_to_foreman(f"cleanup error (pre_retire_summary): {e}")
-                        is_guest = False
+            should_promote = False
+            # read_lock_int → None for an absent OR NUL-corrupt cc_pid.txt, so a torn
+            # lock falls to the idle-staleness branch instead of wedging as guest (the
+            # old `exists()` check left a corrupt-but-present file in neither branch).
+            prev_cc_pid = read_lock_int(cc_pid_file)
+            if prev_cc_pid is not None:
+                # cc_pid.txt valid — promote if the stored CC PID is dead or reused
+                prev_start = read_lock_int(DATA_DIR / "cc_pid_start.txt")
+                if not is_cc_pid_alive(prev_cc_pid, prev_start):
+                    should_promote = True
+                    log_to_foreman(f"guest→main promoted: previous CC PID={prev_cc_pid} dead or reused by another process")
+            else:
+                # cc_pid.txt absent or corrupt (previous main ran in foreman fallback mode, or the
+                # lock was NUL-filled by a crash) — the stored CC PID is unknown, so decide zombie
+                # vs live main by activity staleness. relay.jsonl and last_prompt.txt are written
+                # only by the real main (guests skip both writes), and current_session_id.txt is
+                # written only by the main at startup (guests write guest_session_id.txt), so their
+                # mtime reflects only genuine main activity — current_session_id.txt covers a fresh
+                # main that has not prompted yet. a stale idle across all three means the previous
+                # main is gone.
+                last_activity = 0.0
+                for f in (P["relay"], P["last_prompt"], P["session_id"]):
+                    try:
+                        last_activity = max(last_activity, f.stat().st_mtime)
+                    except (FileNotFoundError, KeyError):
+                        pass
+                idle = (time.time() - last_activity) if last_activity > 0 else None
+                if idle is None or idle >= INACTIVITY_TIMEOUT:
+                    should_promote = True
+                    idle_str = "unknown" if idle is None else f"{idle:.0f}s"
+                    log_to_foreman(f"guest→main promoted: cc_pid.txt absent/corrupt, previous main idle {idle_str} — treated as gone")
+
+            if should_promote:
+                try:
+                    P['session_id'].unlink(missing_ok=True)
+                    log_to_foreman("cleanup: removed current_session_id.txt (promoted)")
+                except Exception as e:
+                    log_to_foreman(f"cleanup error (session_id): {e}")
+                try:
+                    P['handoff'].unlink(missing_ok=True)
+                    log_to_foreman("cleanup: removed handoff.json (promoted)")
+                except Exception as e:
+                    log_to_foreman(f"cleanup error (handoff): {e}")
+                try:
+                    P['handoff_prev'].unlink(missing_ok=True)
+                    log_to_foreman("cleanup: removed handoff_prev.json (promoted → first session after force-close)")
+                except Exception as e:
+                    log_to_foreman(f"cleanup error (handoff_prev): {e}")
+                try:
+                    P['pre_retire_summary'].unlink(missing_ok=True)
+                    log_to_foreman("cleanup: removed pre_retire_summary.json (promoted)")
+                except Exception as e:
+                    log_to_foreman(f"cleanup error (pre_retire_summary): {e}")
+                is_guest = False
         except Exception as e:
             log_to_foreman(f"promotion check error: {e}")
 
@@ -345,14 +491,25 @@ def main():
         P.get("is_guest_flag", DATA_DIR / "is_guest.flag").unlink(missing_ok=True)
     except Exception:
         pass
-    # 4-1. save CC process PID — must be done before ensure_foreman() so foreman monitors the right PID
+    # 4-1. save CC process PID — must be done before ensure_foreman() so foreman monitors the right PID.
+    # also record the CC creation time in the sibling cc_pid_start.txt (rename-proof identity anchor);
+    # cc_pid.txt keeps its plain-pid format so existing readers (recover_data_dir_by_cc_pid etc.) are untouched.
     try:
         cc_pid_val = find_cc_pid()
         cc_pid_file = P.get("cc_pid", DATA_DIR / "cc_pid.txt")
+        cc_start_file = DATA_DIR / "cc_pid_start.txt"
         if cc_pid_val:
-            Path(cc_pid_file).write_text(str(cc_pid_val), encoding='utf-8')
+            atomic_write_lock(cc_pid_file, str(cc_pid_val))
+            st = get_proc_start_time(cc_pid_val)
+            if st is not None:
+                atomic_write_lock(cc_start_file, str(st))
+            else:
+                try: Path(cc_start_file).unlink()
+                except FileNotFoundError: pass
         else:
             try: Path(cc_pid_file).unlink()
+            except FileNotFoundError: pass
+            try: Path(cc_start_file).unlink()
             except FileNotFoundError: pass
     except Exception:
         pass
@@ -529,7 +686,7 @@ def main():
     # main session confirmed — write session_id + register in session map
     try:
         if session_id:
-            P["session_id"].write_text(session_id, encoding='utf-8')
+            atomic_write_lock(P["session_id"], session_id)
             register_session(session_id, DATA_DIR)
     except Exception:
         pass
@@ -596,6 +753,14 @@ def main():
     tui_msg = f"\n{line1}\n{line2}"
     if session_warn_content:
         tui_msg += f"\n[Junior Mark] ℹ️ {session_warn_content}"
+
+    # wiki log.md auto-rotation: archive old entries when the log grows too big
+    # (main session only; never touches the last entry / anchor)
+    try:
+        from wiki_log_rotate import rotate_if_needed
+        rotate_if_needed()
+    except Exception:
+        pass
 
     additional_parts = ["IS_GUEST=false"]
     additional_parts.append("IS_NEW_SESSION=true" if is_new else "IS_NEW_SESSION=false")

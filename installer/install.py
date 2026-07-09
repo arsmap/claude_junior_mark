@@ -12,6 +12,7 @@ TARGET_DIR = CLAUDE_DIR / 'plugins' / 'junior_mark'
 
 CLAUDE_MD_LINES = [
     '@~/.claude/plugins/junior_mark/jm_rules.md',
+    '@~/.claude/plugins/junior_mark/wiki_rules.md',
 ]
 
 def ok(msg):   print(f"  [ok] {msg}")
@@ -36,12 +37,12 @@ def install():
         count += 1
     ok(f"scripts/ copied ({count} files)")
 
-    # 3. copy root files (jm_rules.md, README.md, README_KO.md,LICENSE)
-    for fname in ('jm_rules.md', 'README.md', 'README_KO.md', 'LICENSE'):
+    # 3. copy root files (jm_rules.md, wiki_rules.md, README.md, README_KO.md, LICENSE)
+    for fname in ('jm_rules.md', 'wiki_rules.md', 'README.md', 'README_KO.md', 'LICENSE'):
         src_file = BASE_DIR / fname
         if src_file.exists():
             shutil.copy2(src_file, TARGET_DIR / fname)
-    ok("jm_rules.md, README.md, README_KO.md, LICENSE copied")
+    ok("jm_rules.md, wiki_rules.md, README.md, README_KO.md, LICENSE copied")
 
     # 4. merge hooks into settings.json
     settings_path = CLAUDE_DIR / 'settings.json'
@@ -71,9 +72,20 @@ def install():
             kept = [e for e in existing if not any('junior_mark' in h.get('command', '') for h in e.get('hooks', []))]
             settings['hooks'][event] = kept + new_entries
 
-    # copy non-hooks top-level keys (e.g. statusLine)
+    # merge permissions (append allow/deny/ask rules without clobbering existing user rules)
+    if 'permissions' in adding:
+        if 'permissions' not in settings:
+            settings['permissions'] = {}
+        for pkey, pval in adding['permissions'].items():
+            if isinstance(pval, list):
+                existing = settings['permissions'].get(pkey, [])
+                settings['permissions'][pkey] = existing + [x for x in pval if x not in existing]
+            else:
+                settings['permissions'][pkey] = pval
+
+    # copy remaining non-hooks/permissions top-level keys (e.g. statusLine)
     for key, value in adding.items():
-        if key != 'hooks':
+        if key not in ('hooks', 'permissions'):
             settings[key] = value
 
     settings_path.write_text(
