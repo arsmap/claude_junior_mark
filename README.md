@@ -13,6 +13,7 @@
   <img src="https://img.shields.io/badge/python-≥_3.8-3776AB?logo=python&logoColor=white" alt="Python" />
   <img src="https://img.shields.io/badge/platform-Windows-0078D4?logo=windows&logoColor=white" alt="Platform" />
   <img src="https://img.shields.io/badge/Claude_Code-plugin-D97706" alt="Claude Code" />
+  <img src="https://img.shields.io/badge/LLM_Wiki-inspired-8A2BE2" alt="LLM Wiki" />
   <img src="https://img.shields.io/badge/PRs-welcome-purple" alt="PRs Welcome" />
 </p>
 
@@ -194,8 +195,26 @@ next session inherits    next session starts fresh
 Data stored at: `~/.claude/plugins/junior_mark/data/{project-slug}/`  
 <br>
 
+## Safety guards
+Two `PreToolUse` hooks keep common footguns from reaching the shell:
+
+| Guard | What it blocks |
+|-------|----------------|
+| `read_guard` | Bare shell file reads (`cat`/`tail`/`head`, `Get-Content`/`gc`/`type`, `[IO.File]::ReadAll*`) — they trigger permission prompts and corrupt UTF-8 under a cp949 console, which the Read tool avoids. Piped processing, redirects, and `tail -f` stay allowed. |
+| `cd_guard` | Chained `cd <dir> && <cmd>`, which changes the session-global working directory and pollutes later tool calls. Use an absolute path (`git -C <abs>`) instead. A standalone `cd` for CWD restore is allowed. |
+<br>
+
+## Persistent wiki
+Beyond per-session handoff, jm can maintain a long-lived knowledge wiki at `~/.claude/plugins/junior_mark/wiki/`. At session start Claude reads the last log entry — the *anchor* — to recover the in-progress work thread, and writes decisions back before the session ends. Because the wiki is independent of the handoff file, the thread survives even a `/clear` that purges the handoff.
+
+The installer ships the rules (`wiki_rules.md`) and tooling — `wiki_log_rotate.py` (rotates an oversized log), `wiki_cluster.py` / `wiki_graph.py` (cluster and visualize pages) — but no content. Create the `wiki/` folder and start a `log.md` to use it; see `wiki_rules.md` for the operating rules.  
+<br>
+
 ## Acknowledgments
 The output format of the status bar was inspired by fomyio's [claude-context-monitor](https://github.com/fomyio/claude-context-monitor).
+
+The persistent wiki is built on [Andrej Karpathy's *LLM wiki* idea](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f) — having an LLM incrementally build and maintain a wiki instead of re-retrieving sources at query time — with its graph-relevance signals and clustering adapted from [nashsu/llm_wiki](https://github.com/nashsu/llm_wiki) (GPL-3.0). We borrowed the methodology but reimplemented it independently in Markdown.
+
 Please note that all other core features—including session management, the foreman daemon, and the handoff system—were independently developed.  
 <br>
 

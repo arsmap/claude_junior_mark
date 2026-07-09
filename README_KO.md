@@ -13,6 +13,7 @@
   <img src="https://img.shields.io/badge/python-≥_3.8-3776AB?logo=python&logoColor=white" alt="Python" />
   <img src="https://img.shields.io/badge/platform-Windows-0078D4?logo=windows&logoColor=white" alt="Platform" />
   <img src="https://img.shields.io/badge/Claude_Code-plugin-D97706" alt="Claude Code" />
+  <img src="https://img.shields.io/badge/LLM_Wiki-inspired-8A2BE2" alt="LLM Wiki" />
   <img src="https://img.shields.io/badge/PRs-welcome-purple" alt="PRs Welcome" />
 </p>
 
@@ -185,9 +186,27 @@ retire 처리        off 처리
 데이터 위치: `~/.claude/plugins/junior_mark/data/{프로젝트-slug}/`  
 <br>
 
+## 안전 가드
+두 개의 `PreToolUse` 훅이 흔한 실수가 셸에 닿기 전에 막아줍니다:
+
+| 가드 | 차단 대상 |
+|------|-----------|
+| `read_guard` | 셸 파일 읽기 명령 (`cat`/`tail`/`head`, `Get-Content`/`gc`/`type`, `[IO.File]::ReadAll*`) — 권한 프롬프트를 띄우고 cp949 콘솔에서 UTF-8을 깨뜨리는데, Read 도구는 두 문제 모두 없습니다. 파이프 처리, 리다이렉트, `tail -f`는 그대로 허용됩니다. |
+| `cd_guard` | 체인된 `cd <dir> && <cmd>` — 세션 전역 작업 디렉토리를 바꿔 이후 도구 호출을 오염시킵니다. 대신 절대 경로(`git -C <abs>`)를 사용하세요. CWD 복원용 단독 `cd`는 허용됩니다. |
+<br>
+
+## 지속성 위키
+세션별 핸드오프를 넘어, jm은 `~/.claude/plugins/junior_mark/wiki/`에 오래 유지되는 지식 위키를 관리할 수 있습니다. 세션 시작 시 Claude는 마지막 로그 항목 — *앵커* — 을 읽어 진행 중이던 작업 흐름을 복구하고, 세션이 끝나기 전 결정 사항을 다시 기록합니다. 위키는 핸드오프 파일과 독립적이라, 핸드오프를 지우는 `/clear` 후에도 작업 흐름이 살아남습니다.
+
+설치 시 규칙(`wiki_rules.md`)과 도구 — `wiki_log_rotate.py`(비대해진 로그 회전), `wiki_cluster.py` / `wiki_graph.py`(페이지 클러스터링·시각화) — 는 배포되지만 콘텐츠는 없습니다. `wiki/` 폴더를 만들고 `log.md`를 시작하면 사용할 수 있으며, 운영 규칙은 `wiki_rules.md`를 참조하세요.  
+<br>
+
 ## 참고 및 출처
 상태바의 출력 형식은 fomyio의 [claude-context-monitor](https://github.com/fomyio/claude-context-monitor) 를 참고하였습니다.  
-그외 세션 관리, 포맨 데몬, handoff 시스템 등의 중요 기능은 자체 개발되었음을 밝힙니다.  
+
+지속성 위키는 Andrej Karpathy의 [*LLM wiki* 아이디어](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f) — 질의 때마다 원본을 재검색하는 대신 LLM이 위키를 점진적으로 쌓고 유지하는 방식 — 에 기반하며, 그래프 관련도 신호와 클러스터링은 [nashsu/llm_wiki](https://github.com/nashsu/llm_wiki)(GPL-3.0)에서 차용했습니다. 방법론을 빌려오되 마크다운으로 독립 구현되었습니다.
+
+그외 세션 관리, 포맨 데몬, handoff 시스템 등의 중요 기능은 자체 개발되었음을 밝힙니다.
 <br>
 
 ## 라이선스
